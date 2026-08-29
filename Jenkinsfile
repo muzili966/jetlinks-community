@@ -5,7 +5,7 @@
 //
 // 前置条件：
 //   1. 构建节点需有 JDK17 + Maven + Docker（当前 Jenkins 只有内置节点且无标签，故用 agent any）
-//   2. Credentials: harbor-credentials（Harbor 账号）、deploy-ssh-key（部署服务器 SSH）
+//   2. Credentials: harbor-jetlinks（Harbor jetlinks 项目的 robot 账号）、deploy-ssh-key（部署服务器 SSH）
 //   3. 部署服务器 /opt/jetlinks/compose/ 已放置 docker-compose.*.yaml 与 .env.*
 
 def SERVICE_NAME = 'jetlinks-api'
@@ -87,7 +87,7 @@ pipeline {
                         """
                         // 显式登录：不依赖构建机手工 docker login 的会话（会过期，过期后一律 401）
                         withCredentials([usernamePassword(
-                                credentialsId: 'harbor-credentials',
+                                credentialsId: 'harbor-jetlinks',
                                 usernameVariable: 'HARBOR_USER',
                                 passwordVariable: 'HARBOR_PASS')]) {
                             sh """
