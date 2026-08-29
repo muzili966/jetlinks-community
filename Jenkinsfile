@@ -133,10 +133,11 @@ pipeline {
         stage('部署验证') {
             when { expression { params.ENV in ['dev', 'test'] } }
             steps {
-                // JetLinks 首次启动要建表，给足等待时间
+                // 禁用 ui profile 后根路径 / 返回 404（后端是纯 API），
+                // 故用 actuator 健康端点探活；JetLinks 首次启动要建表，给足等待时间
                 retry(10) {
                     sleep 15
-                    sh "curl -sf -o /dev/null -w '%{http_code}' http://${DEPLOY_HOST}:${API_PORT[params.ENV]}/ | grep -E '200|302|401'"
+                    sh "curl -sf -o /dev/null -w '%{http_code}' http://${DEPLOY_HOST}:${API_PORT[params.ENV]}/actuator/health | grep 200"
                 }
             }
         }
