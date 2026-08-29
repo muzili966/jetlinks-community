@@ -1,0 +1,71 @@
+# JetLinks 物联网平台编排（test 环境）
+#
+# 端口规划：与 wxxpay 完全错开（wxxpay 占用 3000-3102 / 8000-8108 / 10091-10107）
+#   8848       平台 API（JetLinks 默认端口）
+#   3200       管理前端
+#   1883-1890  MQTT 设备接入（预留区间，在平台"网络组件"中分配）
+#   8800-8810  TCP/HTTP 设备接入（预留区间）
+#
+# PostgreSQL（需装 timescaledb 扩展）与 Redis 均使用宿主机已有实例，不在此编排内。
+#
+# 使用方式：
+#   全量启动:   docker compose -f docker-compose.test.yaml --env-file .env.test up -d
+#   单服务更新: REGISTRY=xxx TAG=xxx docker compose -f docker-compose.test.yaml --env-file .env.test up -d --no-deps jetlinks-api
+
+services:
+    jetlinks-api:
+        image: ${REGISTRY}/jetlinks-api:${TAG:-latest}
+        container_name: jetlinks-api
+        ports:
+            - "8858:8848"
+            - "1893-1900:1883-1890"
+            - "8820-8830:8800-8810"
+        # 容器内以 host.docker.internal 访问宿主机的 PostgreSQL / Redis
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+        env_file:
+            - .env.test
+        environment:
+            - TZ=Asia/Shanghai
+            - JAVA_OPTS=-Duser.language=zh -Xms1g -Xmx2g
+            # 平台对外访问地址（前端与设备回调用，改了端口映射这里也要改）
+            - EXTERNAL_HOST=${EXTERNAL_HOST}
+            - EXTERNAL_PORT=8858
+            - ADMIN_USER_PASSWORD=${ADMIN_USER_PASSWORD}
+            # 数据库：宿主机 PostgreSQL + TimescaleDB
+            - spring.r2dbc.url=r2dbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DATABASE}
+            - spring.r2dbc.username=${PG_USERNAME}
+            - spring.r2dbc.password=${PG_PASSWORD}
+            - easyorm.default-schema=${PG_SCHEMA}
+            # Redis：宿主机实例
+            - spring.data.redis.host=${REDIS_HOST}
+            - spring.data.redis.port=${REDIS_PORT}
+            - spring.data.redis.database=${REDIS_DATABASE}
+            - spring.data.redis.password=${REDIS_PASSWORD}
+            # 多租户开关（关闭时行为与单租户版完全一致，可作回滚开关）
+            - tenant.enabled=${TENANT_ENABLED}
+            - tenant.platform-admin-role-id=platform-admin
+            - tenant.expire-notify-days=7
+            # 设备接入端口资源池，需与上方 ports 映射保持一致
+            - network.resources[0]=0.0.0.0:8800-8810/tcp
+            - network.resources[1]=0.0.0.0:1883-1890
+            - file.manager.storage-base-path=/application/data/files
+            - logging.level.org.jetlinks=warn
+            - logging.level.org.hswebframework=warn
+            - logging.level.org.springframework=warn
+        volumes:
+            - ./data/jetlinks:/application/data
+        restart: unless-stopped
+
+    jetlinks-ui:
+        image: ${REGISTRY}/jetlinks-ui:${TAG:-latest}
+        container_name: jetlinks-ui
+        depends_on:
+            - jetlinks-api
+        ports:
+            - "3210:80"
+        environment:
+            - TZ=Asia/Shanghai
+            # 前端 Nginx 反代后端的地址（容器内走服务名，末尾斜杠不能省）
+            - API_BASE_PATH=http://jetlinks-api:8848/
+        restart: unless-stopped
