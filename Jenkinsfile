@@ -5,11 +5,13 @@
 //
 // 前置条件：
 //   1. 构建节点需有 JDK17 + Maven + Docker（当前 Jenkins 只有内置节点且无标签，故用 agent any）
-//   2. Credentials: deploy-ssh-key（部署服务器 SSH）
+//   2. Credentials: harbor-credentials（Harbor 账号）、deploy-ssh-key（部署服务器 SSH）
 //   3. 部署服务器 /opt/jetlinks/compose/ 已放置 docker-compose.*.yaml 与 .env.*
 
 def SERVICE_NAME = 'jetlinks-api'
-def REGISTRY     = '10.242.98.181:9093/jetlinks'
+def REGISTRY      = '10.242.98.181:9093/jetlinks'
+// 登录只需主机部分: 10.242.98.181:9093/jetlinks → 10.242.98.181:9093
+def REGISTRY_HOST = '10.242.98.181:9093'
 def DEPLOY_HOST  = '10.242.98.181'
 def DEPLOY_DIR   = '/opt/jetlinks/compose'
 // 各环境宿主机映射端口（容器内固定 8848；8848 被 Nacos 占用，故对外错开）
@@ -18,8 +20,9 @@ def API_PORT     = [dev: '8858', test: '8868']
 pipeline {
     agent any
 
-    // 节点未设置 JAVA_HOME，mvnw 无法启动；由 Jenkins 全局工具注入
+    // 与 wxxpay 各服务一致：使用 Jenkins 全局工具，不用 mvnw（避免每次构建重新下载 Maven）
     tools {
+        maven 'maven-3.9'
         jdk 'jdk17'
     }
 
@@ -49,7 +52,7 @@ pipeline {
             steps {
                 // jacoco 的 argLine 占位符在非 verify 生命周期未填充，需显式置空
                 sh """
-                    ./mvnw -B clean package \
+                    mvn -B clean package \
                         -pl jetlinks-standalone -am \
                         ${params.SKIP_TESTS ? '-DskipTests' : ''} \
                         -DjacocoArgLine=
@@ -75,10 +78,21 @@ pipeline {
                     // Dockerfile 位于 jetlinks-standalone，构建上下文同目录（需 target/application.jar）
                     dir('jetlinks-standalone') {
                         sh """
+                            export DOCKER_BUILDKIT=1
+                            export DOCKER_MAX_CONCURRENT_UPLOADS=2
                             docker build -t ${env.IMAGE} -t ${REGISTRY}/${SERVICE_NAME}:latest .
-                            docker push ${env.IMAGE}
-                            docker push ${REGISTRY}/${SERVICE_NAME}:latest
                         """
+                        // 显式登录：不依赖构建机手工 docker login 的会话（会过期，过期后一律 401）
+                        withCredentials([usernamePassword(
+                                credentialsId: 'harbor-credentials',
+                                usernameVariable: 'HARBOR_USER',
+                                passwordVariable: 'HARBOR_PASS')]) {
+                            sh """
+                                echo "\$HARBOR_PASS" | docker login ${REGISTRY_HOST} -u "\$HARBOR_USER" --password-stdin
+                                docker push ${env.IMAGE}
+                                docker push ${REGISTRY}/${SERVICE_NAME}:latest
+                            """
+                        }
                     }
                 }
             }
