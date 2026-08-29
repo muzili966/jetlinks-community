@@ -14,7 +14,10 @@ import org.jetlinks.community.tenant.messaging.TenantTopicChecker;
 import org.jetlinks.community.tenant.metric.TenantThingsDataCustomizer;
 import org.jetlinks.community.notify.manager.service.NotificationService;
 import org.jetlinks.community.tenant.notice.TenantExpireNotifier;
+import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.tenant.quota.TenantQuotaListener;
+import org.jetlinks.community.tenant.role.TenantGrantGuard;
+import org.jetlinks.community.tenant.role.TenantRoleInitializer;
 import org.jetlinks.community.tenant.service.TenantInvoiceService;
 import org.jetlinks.community.tenant.service.TenantOrderService;
 import org.jetlinks.community.tenant.web.TenantInvoiceController;
@@ -112,6 +115,17 @@ public class TenantManagerConfiguration {
     @Bean
     public TenantImpersonationFilter tenantImpersonationFilter() {
         return new TenantImpersonationFilter();
+    }
+
+    @Bean
+    public TenantRoleInitializer tenantRoleInitializer(TenantProperties properties,
+                                                       ReactiveRepository<RoleEntity, String> roleRepository) {
+        return new TenantRoleInitializer(properties, roleRepository);
+    }
+
+    @Bean
+    public TenantGrantGuard tenantGrantGuard(TenantProperties properties) {
+        return new TenantGrantGuard(properties);
     }
 
     @Bean

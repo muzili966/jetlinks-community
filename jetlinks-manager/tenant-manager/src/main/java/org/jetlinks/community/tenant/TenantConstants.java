@@ -50,4 +50,18 @@ public interface TenantConstants {
      * 配额key: 最大设备数
      */
     String QUOTA_MAX_DEVICE = "maxDeviceCount";
+
+    /**
+     * 租户管理员角色ID前缀。每个租户开通时自动创建一个，
+     * 拥有本租户内全部权限，可管理本租户的用户与角色。
+     */
+    String TENANT_ADMIN_ROLE_PREFIX = "tenant-admin-";
+
+    static String tenantAdminRoleId(String tenantId) {
+        return TENANT_ADMIN_ROLE_PREFIX + tenantId;
+    }
+
+    static boolean isTenantAdminRole(String roleId) {
+        return roleId != null && roleId.startsWith(TENANT_ADMIN_ROLE_PREFIX);
+    }
 }
