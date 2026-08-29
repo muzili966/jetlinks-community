@@ -1,47 +1,104 @@
 #!/usr/bin/env bash
 # ============================================================
-# 越权扫描基线(§7): 用租户A的token遍历所有GET查询接口,
-# 断言返回中不含租户B的标记数据.
+# 租户越权扫描基线
+#
+# 用租户A的身份遍历查询接口，断言看不到租户B的数据。
+#
+# 关键设计：把「权限不足(403)」与「隔离生效(0条)」严格区分。
+#   早期版本没区分，把 403 当成隔离成功，导致隔离完全失效却被判为通过。
 #
 # 用法:
-#   1. 分别以租户A用户、租户B用户登录获取token
-#   2. 租户B先创建带标记的数据(设备名/产品名含 LEAK_MARKER)
-#   3. ./tenant-leak-scan.sh <BASE_URL> <TENANT_A_TOKEN> [MARKER]
+#   ./tenant-leak-scan.sh <BASE_URL> <TENANT_A_USER> <TENANT_A_PASS> <FOREIGN_ID>
+# 例:
+#   ./tenant-leak-scan.sh http://127.0.0.1:8858 tenant-a Tenant@2026 2093707859930353664
 #
-# 改造前跑一遍应几乎全红; 每完成一个模块跑一遍, 红色数字即剩余工作量.
+# FOREIGN_ID: 一条不属于租户A的设备ID，用于 findById 直读越权测试。
 # ============================================================
 set -u
 
-BASE_URL="${1:?usage: $0 <base-url> <tenant-a-token> [marker]}"
-TOKEN="${2:?missing tenant-a token}"
-MARKER="${3:-TENANT_B_MARKER}"
+BASE_URL="${1:?usage: $0 <base-url> <user> <pass> <foreign-device-id>}"
+USER="${2:?missing user}"
+PASS="${3:?missing pass}"
+FOREIGN_ID="${4:?missing foreign device id}"
 
-PASS=0; LEAK=0; SKIP=0
+PASS_N=0; LEAK_N=0; DENY_N=0; SKIP_N=0
 
-# 从 springdoc 拿全部 GET 接口
-paths=$(curl -sf -H "X-Access-Token: $TOKEN" "$BASE_URL/v3/api-docs" \
-        | grep -o '"/[^"]*"[[:space:]]*:[[:space:]]*{[^}]*"get"' \
-        | grep -o '"/[^"]*"' | tr -d '"' | sort -u)
+hdr() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+ok()   { printf '  \033[32m[PASS]\033[0m %s\n' "$1"; PASS_N=$((PASS_N+1)); }
+leak() { printf '  \033[31m[LEAK]\033[0m %s\n' "$1"; LEAK_N=$((LEAK_N+1)); }
+deny() { printf '  \033[33m[DENY]\033[0m %s (403 权限不足，非隔离结果，无法判定)\n' "$1"; DENY_N=$((DENY_N+1)); }
 
-if [ -z "$paths" ]; then
-    echo "无法获取 api-docs, 检查服务地址与token"
-    exit 2
+TOKEN=$(curl -s -X POST "$BASE_URL/authorize/login" -H 'Content-Type: application/json' \
+        -d "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
+        | grep -oE '"token":"[^"]+"' | head -1 | cut -d'"' -f4)
+[ -z "$TOKEN" ] && { echo "登录失败，无法扫描"; exit 2; }
+echo "已以 $USER 身份登录"
+
+# ---------- 1. findById 直读越权（最典型的越权路径） ----------
+hdr "1. findById 直读他人数据"
+BODY=$(curl -s -o /dev/null -w '%{http_code}' -H "X-Access-Token: $TOKEN" \
+       "$BASE_URL/device-instance/$FOREIGN_ID")
+FULL=$(curl -s -H "X-Access-Token: $TOKEN" "$BASE_URL/device-instance/$FOREIGN_ID")
+if [ "$BODY" = "403" ]; then
+    deny "GET /device-instance/{foreignId}"
+elif echo "$FULL" | grep -q '"result"[[:space:]]*:[[:space:]]*{'; then
+    leak "GET /device-instance/{foreignId} 拿到了他人设备"
+else
+    ok "GET /device-instance/{foreignId} 无数据"
 fi
 
-for path in $paths; do
-    # 跳过带路径参数的接口(需要具体ID, 单独用例覆盖)
-    case "$path" in
-        *\{*) SKIP=$((SKIP+1)); continue ;;
-    esac
-    body=$(curl -s -m 10 -H "X-Access-Token: $TOKEN" "$BASE_URL$path")
-    if printf '%s' "$body" | grep -q "$MARKER"; then
-        echo "[LEAK] $path"
-        LEAK=$((LEAK+1))
+# ---------- 2. 列表查询 ----------
+hdr "2. 列表查询是否混入他人数据"
+for path in \
+    "/device-instance/_query" \
+    "/device-product/_query" \
+    "/rule-engine/instance/_query" \
+    "/scene/_query" \
+    "/alarm/config/_query" \
+    "/notify/config/_query" \
+    "/file/_query" \
+    "/organization/_query" \
+    "/role/_query"
+do
+    RESP=$(curl -s -X POST "$BASE_URL$path" -H "X-Access-Token: $TOKEN" \
+           -H 'Content-Type: application/json' -d '{"paging":false}')
+    CODE=$(echo "$RESP" | grep -oE '"status":[0-9]+' | head -1 | cut -d: -f2)
+    if [ "$CODE" = "403" ]; then deny "POST $path"; continue; fi
+    if echo "$RESP" | grep -q "$FOREIGN_ID"; then
+        leak "POST $path 返回中含他人数据 $FOREIGN_ID"
     else
-        PASS=$((PASS+1))
+        # 进一步检查 tenantId 字段是否混入其他租户
+        OTHER=$(echo "$RESP" | grep -oE '"tenantId":"[^"]*"' | sort -u | grep -v "\"tenantId\":\"\"" | head -3)
+        if [ -n "$OTHER" ]; then
+            UNIQ=$(echo "$OTHER" | wc -l)
+            if [ "$UNIQ" -gt 1 ]; then
+                leak "POST $path 返回中混有多个租户: $(echo $OTHER | tr '\n' ' ')"
+            else
+                ok "POST $path 仅含单一租户 $(echo $OTHER | cut -d'"' -f4)"
+            fi
+        else
+            ok "POST $path 无越权数据"
+        fi
     fi
 done
 
-echo "------------------------------------------"
-echo "pass=$PASS leak=$LEAK skip(path-param)=$SKIP"
-[ "$LEAK" -eq 0 ]
+# ---------- 3. 平台专属接口应被拒绝 ----------
+hdr "3. 平台专属接口对租户用户应 403"
+for path in "/tenant/_query" "/tenant/plan/_query" "/tenant/order/_query" "/tenant/invoice/_query"; do
+    CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL$path" \
+           -H "X-Access-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"paging":false}')
+    if [ "$CODE" = "403" ]; then
+        ok "POST $path 已拒绝 (403)"
+    else
+        leak "POST $path 未拒绝 (HTTP $CODE) —— 租户可访问平台接口"
+    fi
+done
+
+# ---------- 汇总 ----------
+printf '\n============================================\n'
+printf '通过 %d   越权 %d   无法判定(403) %d\n' "$PASS_N" "$LEAK_N" "$DENY_N"
+if [ "$DENY_N" -gt 0 ]; then
+    printf '注意: DENY 项因权限不足未能验证隔离，需给测试账号补权限后重跑。\n'
+fi
+printf '============================================\n'
+[ "$LEAK_N" -eq 0 ]
