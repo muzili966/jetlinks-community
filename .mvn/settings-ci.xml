@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CI 专用 Maven settings。
+
+  背景：构建节点全局 settings.xml 配置了 <mirrorOf>*</mirrorOf> 指向内网 Nexus，
+  会拦截 pom.xml 中声明的 hsweb-nexus（https://nexus.jetlinks.cn），
+  导致 org.hswebframework.* 与 org.jetlinks.* 的 SNAPSHOT 一律解析失败：
+      Could not find artifact org.hswebframework.web:hsweb-core:jar:5.0.2-SNAPSHOT
+
+  这里把 hsweb-nexus 排除在镜像之外：Maven Central 等仍走内网 Nexus（快且有缓存），
+  只有 JetLinks 自家的 SNAPSHOT 直连上游（已确认构建节点可达该地址）。
+
+  长期更优解：在内网 Nexus 中为 https://nexus.jetlinks.cn/content/groups/public/
+  建一个 proxy 仓库并加入 maven-public 组，届时本文件即可删除。
+
+  注意：本文件不含任何凭据。
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+    <mirrors>
+        <mirror>
+            <id>nexus-mirror</id>
+            <name>内网 Nexus（排除 hsweb-nexus）</name>
+            <url>http://192.168.8.39:9091/repository/maven-public/</url>
+            <mirrorOf>*,!hsweb-nexus</mirrorOf>
+        </mirror>
+    </mirrors>
+
+</settings>
