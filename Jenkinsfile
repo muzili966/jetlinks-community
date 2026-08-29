@@ -53,10 +53,14 @@ pipeline {
             steps {
                 // -s: 节点全局 settings 的 mirrorOf=* 会拦截 hsweb-nexus，导致 JetLinks
                 //     SNAPSHOT 解析失败，故用仓库内 settings-ci.xml 放行（详见该文件注释）
+                // -P '!ui': standalone 默认激活 ui profile，会把官方预编译的 UI 打进 jar，
+                //     使后端 :8858 直接伺服一套【未含租户功能】的原版界面，与我们部署在
+                //     :3200 的改造版并存、极易用错。后端只做 API，故禁用该 profile。
                 // -DjacocoArgLine=: jacoco 的 argLine 占位符在非 verify 生命周期未填充，需显式置空
                 sh """
                     mvn -B clean package \
                         -s .mvn/settings-ci.xml \
+                        -P '!ui' \
                         -pl jetlinks-standalone -am \
                         ${params.SKIP_TESTS ? '-DskipTests' : ''} \
                         -DjacocoArgLine=
