@@ -5,15 +5,16 @@
 //
 // 前置条件：
 //   1. 构建节点需有 JDK17 + Maven + Docker（当前 Jenkins 只有内置节点且无标签，故用 agent any）
-//   2. Credentials: harbor-jetlinks（Harbor jetlinks 项目的 robot 账号）、deploy-ssh-key（部署服务器 SSH）
-//   3. 部署服务器 /opt/jetlinks/compose/ 已放置 docker-compose.*.yaml 与 .env.*
+//   2. Credentials: harbor-jetlinks（Harbor jetlinks 项目的 robot 账号）、构建节点 ~/.ssh/config 已配 deploy-server 别名
+//   3. 部署机已克隆本仓库到 ~/workspace/jetlinks-community，并在 docker/deploy/ 下
+//      放好 .env.dev（由 .env.dev.example 复制后填真实口令，已 gitignore）
 
 def SERVICE_NAME = 'jetlinks-api'
 def REGISTRY      = '10.242.98.181:9093/jetlinks'
 // 登录只需主机部分: 10.242.98.181:9093/jetlinks → 10.242.98.181:9093
 def REGISTRY_HOST = '10.242.98.181:9093'
 def DEPLOY_HOST  = '10.242.98.181'
-def DEPLOY_DIR   = '/opt/jetlinks/compose'
+def DEPLOY_DIR   = '~/workspace/jetlinks-community'  // 部署机上的仓库副本，compose 文件由 git 同步
 // 各环境宿主机映射端口（容器内固定 8848；8848 被 Nacos 占用，故对外错开）
 def API_PORT     = [dev: '8858', test: '8868']
 
@@ -104,18 +105,23 @@ pipeline {
         stage('部署') {
             when { expression { params.ENV in ['dev', 'test', 'staging'] } }
             steps {
-                sshagent(credentials: ['deploy-ssh-key']) {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no ${DEPLOY_HOST} "
-                            cd ${DEPLOY_DIR} && \\
-                            docker pull ${env.IMAGE} && \\
-                            REGISTRY=${REGISTRY} TAG=${env.IMAGE_TAG} \\
-                              docker compose -f docker-compose.${params.ENV}.yaml \\
-                                             --env-file .env.${params.ENV} \\
-                                             up -d --no-deps ${SERVICE_NAME}
-                        "
-                    """
-                }
+                // 与 wxxpay 一致：用构建节点 ~/.ssh/config 里的 deploy-server 别名，
+                // 不依赖 SSH Agent 插件（该 Jenkins 未安装 ssh-agent plugin）。
+                // compose 文件直接取自部署机上的仓库副本，git 同步后使用，无需手工拷贝；
+                // .env.* 含口令、已 gitignore，只在部署机上维护一份，git reset 不会动它。
+                sh """
+                    ssh deploy-server "
+                        cd ${DEPLOY_DIR} && \\
+                        git fetch origin ${env.BRANCH_NAME} && \\
+                        git reset --hard origin/${env.BRANCH_NAME} && \\
+                        cd docker/deploy && \\
+                        docker pull ${env.IMAGE} && \\
+                        REGISTRY=${REGISTRY} TAG=${env.IMAGE_TAG} \\
+                          docker compose -f docker-compose.${params.ENV}.yaml \\
+                                         --env-file .env.${params.ENV} \\
+                                         up -d --no-deps ${SERVICE_NAME}
+                    "
+                """
                 echo "已部署: ${SERVICE_NAME} → ${params.ENV} (${env.IMAGE})"
             }
         }
