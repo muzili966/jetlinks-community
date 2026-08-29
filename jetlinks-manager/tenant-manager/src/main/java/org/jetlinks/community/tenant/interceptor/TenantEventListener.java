@@ -110,6 +110,13 @@ public class TenantEventListener implements EventListener, Ordered {
 
     private void applyTenant(EventType type, EventContext ctx, String tenantId) {
         if (type == MappingEventTypes.select_before) {
+            // 必须改 queryOaram(QueryParam)：hsweb 自身的 EntityEventListener 也是操作它。
+            // 早前只改 MappingContextKeys.query(QueryOperator) 无效——在 reactiveResultHolder
+            // 的 before 回调里 QueryOperator 已构建完毕，条件进不了最终 SQL（真机实测：
+            // 对 admin 注入 __NO_TENANT__ 仍能查到全部数据）。
+            ctx.get(MappingContextKeys.queryOaram)
+               .ifPresent(param -> param.and(TenantConstants.TENANT_ID_PROPERTY, "eq", tenantId));
+            // 兜底：部分路径不经 QueryParam，仍尝试 QueryOperator
             ctx.get(MappingContextKeys.query)
                .ifPresent(q -> q.where(c -> c.is(TenantConstants.TENANT_ID_PROPERTY, tenantId)));
         } else if (type == MappingEventTypes.update_before) {
