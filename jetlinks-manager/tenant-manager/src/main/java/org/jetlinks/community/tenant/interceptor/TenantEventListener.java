@@ -83,16 +83,28 @@ public class TenantEventListener implements EventListener, Ordered {
             || type == MappingEventTypes.delete_before;
     }
 
+    /**
+     * 判断该实体是否参与租户隔离。
+     * <p>
+     * 依据是<strong>表里是否存在 tenant_id 列</strong>，而不是实体类是否实现
+     * {@link TenantAware}。真机诊断发现 {@code columnMapping.getEntityType()}
+     * 返回的是<strong>原始实体类</strong>（如 DeviceInstanceEntity），而非实体工厂
+     * 映射后的租户子类，导致按类型判断永远为 false，监听器在第一道关卡就 return，
+     * 隔离全面失效。
+     * <p>
+     * 列元数据由 AutoDDL 依据租户子类生成，是确定的事实，不受工厂映射解析时机影响。
+     */
     private boolean isTenantAwareEntity(EventContext context) {
-        Optional<Class<?>> entityType = context
-            .get(MappingContextKeys.columnMapping)
-            .map(EntityColumnMapping::getEntityType);
-        boolean aware = entityType.map(TenantAware.class::isAssignableFrom).orElse(false);
+        Optional<EntityColumnMapping> mapping = context.get(MappingContextKeys.columnMapping);
+        boolean hasTenantColumn = mapping
+            .flatMap(m -> m.getColumnByProperty(TenantConstants.TENANT_ID_PROPERTY))
+            .isPresent();
         if (log.isDebugEnabled()) {
-            log.debug("tenant-diag entity={} tenantAware={}",
-                      entityType.map(Class::getName).orElse("(无 columnMapping)"), aware);
+            log.debug("tenant-diag entity={} hasTenantColumn={}",
+                      mapping.map(m -> m.getEntityType().getSimpleName()).orElse("(无 columnMapping)"),
+                      hasTenantColumn);
         }
-        return aware;
+        return hasTenantColumn;
     }
 
     private void apply(EventType type,
