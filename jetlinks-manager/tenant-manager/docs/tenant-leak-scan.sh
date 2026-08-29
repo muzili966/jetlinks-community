@@ -8,18 +8,19 @@
 #   早期版本没区分，把 403 当成隔离成功，导致隔离完全失效却被判为通过。
 #
 # 用法:
-#   ./tenant-leak-scan.sh <BASE_URL> <TENANT_A_USER> <TENANT_A_PASS> <FOREIGN_ID>
+#   ./tenant-leak-scan.sh <BASE_URL> <USER> <PASS> <FOREIGN_ID> <MY_TENANT_ID>
 # 例:
-#   ./tenant-leak-scan.sh http://127.0.0.1:8858 tenant-a Tenant@2026 2093707859930353664
+#   ./tenant-leak-scan.sh http://127.0.0.1:8858 tenant-a Tenant@2026 2093707859930353664 t001
 #
 # FOREIGN_ID: 一条不属于租户A的设备ID，用于 findById 直读越权测试。
 # ============================================================
 set -u
 
-BASE_URL="${1:?usage: $0 <base-url> <user> <pass> <foreign-device-id>}"
+BASE_URL="${1:?usage: $0 <base-url> <user> <pass> <foreign-device-id> <my-tenant-id>}"
 USER="${2:?missing user}"
 PASS="${3:?missing pass}"
 FOREIGN_ID="${4:?missing foreign device id}"
+MY_TENANT="${5:?missing my tenant id}"   # 本账号所属租户，用于判定返回数据归属
 
 PASS_N=0; LEAK_N=0; DENY_N=0; SKIP_N=0
 
@@ -67,17 +68,24 @@ do
     if echo "$RESP" | grep -q "$FOREIGN_ID"; then
         leak "POST $path 返回中含他人数据 $FOREIGN_ID"
     else
-        # 进一步检查 tenantId 字段是否混入其他租户
-        OTHER=$(echo "$RESP" | grep -oE '"tenantId":"[^"]*"' | sort -u | grep -v "\"tenantId\":\"\"" | head -3)
-        if [ -n "$OTHER" ]; then
-            UNIQ=$(echo "$OTHER" | wc -l)
-            if [ "$UNIQ" -gt 1 ]; then
-                leak "POST $path 返回中混有多个租户: $(echo $OTHER | tr '\n' ' ')"
+        # 校验返回数据的租户归属：必须全部等于本租户。
+        # 早期版本只判断「是否出现多个租户」，导致 tenant-a 只看到 default
+        # 一个租户的数据时被误判为 PASS —— 那恰恰是越权。
+        SEEN=$(echo "$RESP" | grep -oE '"tenantId":"[^"]*"' | cut -d'"' -f4 | sort -u | grep -v '^$')
+        if [ -z "$SEEN" ]; then
+            ROWS=$(echo "$RESP" | grep -oE '"id":"' | wc -l)
+            if [ "$ROWS" -gt 0 ]; then
+                leak "POST $path 返回 $ROWS 条但无 tenantId 字段(该实体未纳入隔离)"
             else
-                ok "POST $path 仅含单一租户 $(echo $OTHER | cut -d'"' -f4)"
+                ok "POST $path 无数据"
             fi
         else
-            ok "POST $path 无越权数据"
+            FOREIGN=$(echo "$SEEN" | grep -v "^${MY_TENANT}$" || true)
+            if [ -n "$FOREIGN" ]; then
+                leak "POST $path 含他租户数据: $(echo $FOREIGN | tr "\n" " ") (本租户应为 $MY_TENANT)"
+            else
+                ok "POST $path 仅含本租户 $MY_TENANT"
+            fi
         fi
     fi
 done

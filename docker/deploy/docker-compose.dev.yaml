@@ -51,6 +51,9 @@ services:
             - network.resources[1]=0.0.0.0:1883-1890
             - file.manager.storage-base-path=/application/data/files
             - logging.level.org.jetlinks=warn
+            # 租户模块保留 debug：隔离问题必须靠运行时日志定位，
+            # 上面的 org.jetlinks=warn 会连带屏蔽它
+            - logging.level.org.jetlinks.community.tenant=debug
             - logging.level.org.hswebframework=warn
             - logging.level.org.springframework=warn
         volumes:
