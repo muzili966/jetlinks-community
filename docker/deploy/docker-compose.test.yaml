@@ -17,7 +17,7 @@ services:
         image: ${REGISTRY}/jetlinks-api:${TAG:-latest}
         container_name: jetlinks-api
         ports:
-            - "8858:8848"
+            - "8868:8848"
             - "1893-1900:1883-1890"
             - "8820-8830:8800-8810"
         # 容器内以 host.docker.internal 访问宿主机的 PostgreSQL / Redis
@@ -30,7 +30,7 @@ services:
             - JAVA_OPTS=-Duser.language=zh -Xms1g -Xmx2g
             # 平台对外访问地址（前端与设备回调用，改了端口映射这里也要改）
             - EXTERNAL_HOST=${EXTERNAL_HOST}
-            - EXTERNAL_PORT=8858
+            - EXTERNAL_PORT=8868
             - ADMIN_USER_PASSWORD=${ADMIN_USER_PASSWORD}
             # 数据库：宿主机 PostgreSQL + TimescaleDB
             - spring.r2dbc.url=r2dbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DATABASE}

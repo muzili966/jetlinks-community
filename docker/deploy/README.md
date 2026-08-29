@@ -5,14 +5,15 @@ Nacos / XXL-Job / 服务依赖传播，Jenkinsfile 自包含、不依赖 `wxxpay
 
 ## 端口规划（与 wxxpay 完全错开）
 
-| 用途 | JetLinks 端口 | 说明 |
-|---|---|---|
-| 平台 API | `8848` | JetLinks 默认端口 |
-| 管理前端 | `3200` | wxxpay 前端占 3000/3001/3100-3102 |
-| MQTT 设备接入 | `1883-1890` | 预留区间，在平台「网络组件」中分配 |
-| TCP/HTTP 设备接入 | `8800-8810` | 预留区间 |
+| 用途 | dev | test | 说明 |
+|---|---|---|---|
+| 平台 API | `8858` | `8868` | 容器内固定 8848；**宿主机 8848 被 Nacos 占用**，故对外错开 |
+| 管理前端 | `3200` | `3210` | wxxpay 前端占 3000/3001/3100-3102 |
+| MQTT 设备接入 | `1883-1890` | `1893-1900` | 预留区间，在平台「网络组件」中分配 |
+| TCP/HTTP 设备接入 | `8800-8810` | `8820-8830` | 预留区间 |
 
-wxxpay 现有占用（勿侵入）：`3000` `3001` `3100-3102` / `8000` `8081-8108` / `10091-10107`。
+外部占用（勿侵入）：Nacos `8848`；
+wxxpay `3000` `3001` `3100-3102` / `8000` `8081-8108` / `10091-10107`。
 新增 JetLinks 设备接入端口时，从 `1883-1890`、`8800-8810` 区间内取，并同步修改
 compose 的 `ports` 与 `network.resources[*]`——两者必须一致，否则平台分配了端口但容器没映射。
 
@@ -108,7 +109,7 @@ curl -u $AUTH -X POST "$JENKINS/createItem?name=jetlinks-ui" \
 | 测试 | surefire 报告归档（`SKIP_TESTS` 可跳过） | — |
 | 镜像 | `jetlinks-standalone/Dockerfile`（JDK21 分层） | 根目录 `Dockerfile`（nginx + dist） |
 | 部署 | SSH + `docker compose up -d --no-deps` | 同左 |
-| 验证 | `curl :8848` 期望 200/302/401，重试 10×15s | `curl :3200` 期望 200，重试 5×10s |
+| 验证 | `curl :8858(dev)` 期望 200/302/401，重试 10×15s | `curl :3200` 期望 200，重试 5×10s |
 
 > 后端构建必须带 `-DjacocoArgLine=`：jacoco 的 argLine 占位符在非 verify 生命周期不会被填充，
 > 否则 surefire fork 会因 `${jacocoArgLine}` 字面量而崩溃。

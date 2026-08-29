@@ -12,7 +12,8 @@ def SERVICE_NAME = 'jetlinks-api'
 def REGISTRY     = '10.242.98.181:9093/jetlinks'
 def DEPLOY_HOST  = '10.242.98.181'
 def DEPLOY_DIR   = '/opt/jetlinks/compose'
-def API_PORT     = '8848'
+// 各环境宿主机映射端口（容器内固定 8848；8848 被 Nacos 占用，故对外错开）
+def API_PORT     = [dev: '8858', test: '8868']
 
 pipeline {
     agent { label 'java17-docker' }
@@ -103,7 +104,7 @@ pipeline {
                 // JetLinks 首次启动要建表，给足等待时间
                 retry(10) {
                     sleep 15
-                    sh "curl -sf -o /dev/null -w '%{http_code}' http://${DEPLOY_HOST}:${API_PORT}/ | grep -E '200|302|401'"
+                    sh "curl -sf -o /dev/null -w '%{http_code}' http://${DEPLOY_HOST}:${API_PORT[params.ENV]}/ | grep -E '200|302|401'"
                 }
             }
         }
