@@ -34,7 +34,9 @@ compose 的 `ports` 与 `network.resources[*]`——两者必须一致，否则�
 ```bash
 # 1. 部署服务器准备目录
 mkdir -p /opt/jetlinks/compose
-# 将本目录的 docker-compose.*.yaml 和 .env.* 复制过去，按实际环境修改 .env
+# 复制 docker-compose.*.yaml 过去；.env 由模板生成后填入真实口令：
+#   cp .env.dev.example /opt/jetlinks/compose/.env.dev  然后编辑
+# 注意：.env.dev / .env.test 已在 .gitignore 中，含口令不要提交回仓库
 
 # 2. 启动（Jenkins 首次构建推镜像后执行）
 cd /opt/jetlinks/compose

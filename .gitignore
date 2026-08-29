@@ -31,3 +31,6 @@ application-local.yml
 dev/
 .DS_Store
 .java-version
+# 部署环境变量含数据库/Redis 口令，只提交 .env.*.example 模板
+docker/deploy/.env.dev
+docker/deploy/.env.test
