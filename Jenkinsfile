@@ -4,7 +4,7 @@
 // 不引入 Nacos / XXL-Job / 多服务依赖传播，故不依赖 wxxpay-ci Shared Library。
 //
 // 前置条件：
-//   1. Agent 需有 JDK17 + Maven + Docker（标签 java17-docker）
+//   1. 构建节点需有 JDK17 + Maven + Docker（当前 Jenkins 只有内置节点且无标签，故用 agent any）
 //   2. Credentials: deploy-ssh-key（部署服务器 SSH）
 //   3. 部署服务器 /opt/jetlinks/compose/ 已放置 docker-compose.*.yaml 与 .env.*
 
@@ -16,7 +16,7 @@ def DEPLOY_DIR   = '/opt/jetlinks/compose'
 def API_PORT     = [dev: '8858', test: '8868']
 
 pipeline {
-    agent { label 'java17-docker' }
+    agent any
 
     options {
         quietPeriod(10)

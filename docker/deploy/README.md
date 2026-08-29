@@ -54,13 +54,17 @@ docker compose -f docker-compose.dev.yaml --env-file .env.dev restart jetlinks-a
 首次登录后在「系统管理 → 菜单管理」导入前端菜单，租户菜单片段见
 `jetlinks-ui-vue/src/modules/authentication-manager-ui/views/system/Tenant/menu-tenant.json`。
 
-## Jenkins Job 创建
+## Jenkins Job
 
-> 已确认 Jenkins 可达（admin / 2 executors），现有 wxxpay Job 均为**根目录下的
-> Multibranch Pipeline**，命名即服务名。JetLinks 沿用同一约定，新建 `jetlinks-api`
-> 与 `jetlinks-ui` 两个 Job。
+> ✅ **已创建完成**：`jetlinks-api`、`jetlinks-ui` 两个 Multibranch Pipeline
+> 已在 Jenkins 根目录建好，SCM 指向对应 GitHub 仓库，分支索引已发现 `dev` 分支。
+> 后续重建或新增 Job 走工作区技能 `.harness/skills/create-jenkins-job`。
 
-### 方式 A：复制现有 Job 配置（推荐，插件版本一定匹配）
+**注意**：JetLinks 的 **Job 名与仓库名不同**（`jetlinks-api` ← `jetlinks-community`，
+`jetlinks-ui` ← `jetlinks-ui-vue`），与 wxxpay「Job 名即仓库名」的约定不一样，
+写 `config.xml` 或 Groovy 时 `<remote>` 必须单独指定。
+
+### 重建方式 A：复制现有 Job 配置（插件版本一定匹配）
 
 ```bash
 JENKINS=http://<jenkins地址>
@@ -79,7 +83,7 @@ curl -u $AUTH -X POST "$JENKINS/createItem?name=jetlinks-ui" \
      -H 'Content-Type: application/xml' --data-binary @jetlinks-ui.xml
 ```
 
-### 方式 B：UI 手工创建（四步）
+### 重建方式 B：UI 手工创建（四步）
 
 **B1. 凭据**（`Manage Jenkins → Credentials`）
 - `deploy-ssh-key`（SSH Username with private key）— 部署服务器 SSH 私钥
