@@ -18,6 +18,11 @@ def API_PORT     = [dev: '8858', test: '8868']
 pipeline {
     agent any
 
+    // 节点未设置 JAVA_HOME，mvnw 无法启动；由 Jenkins 全局工具注入
+    tools {
+        jdk 'jdk17'
+    }
+
     options {
         quietPeriod(10)
         disableConcurrentBuilds(abortPrevious: true)
