@@ -84,11 +84,15 @@ public class TenantEventListener implements EventListener, Ordered {
     }
 
     private boolean isTenantAwareEntity(EventContext context) {
-        return context
+        Optional<Class<?>> entityType = context
             .get(MappingContextKeys.columnMapping)
-            .map(EntityColumnMapping::getEntityType)
-            .map(TenantAware.class::isAssignableFrom)
-            .orElse(false);
+            .map(EntityColumnMapping::getEntityType);
+        boolean aware = entityType.map(TenantAware.class::isAssignableFrom).orElse(false);
+        if (log.isDebugEnabled()) {
+            log.debug("tenant-diag entity={} tenantAware={}",
+                      entityType.map(Class::getName).orElse("(无 columnMapping)"), aware);
+        }
+        return aware;
     }
 
     private void apply(EventType type,
@@ -114,11 +118,17 @@ public class TenantEventListener implements EventListener, Ordered {
             // 早前只改 MappingContextKeys.query(QueryOperator) 无效——在 reactiveResultHolder
             // 的 before 回调里 QueryOperator 已构建完毕，条件进不了最终 SQL（真机实测：
             // 对 admin 注入 __NO_TENANT__ 仍能查到全部数据）。
+            boolean byParam = ctx.get(MappingContextKeys.queryOaram).isPresent();
             ctx.get(MappingContextKeys.queryOaram)
                .ifPresent(param -> param.and(TenantConstants.TENANT_ID_PROPERTY, "eq", tenantId));
             // 兜底：部分路径不经 QueryParam，仍尝试 QueryOperator
+            boolean byOperator = ctx.get(MappingContextKeys.query).isPresent();
             ctx.get(MappingContextKeys.query)
                .ifPresent(q -> q.where(c -> c.is(TenantConstants.TENANT_ID_PROPERTY, tenantId)));
+            if (log.isDebugEnabled()) {
+                log.debug("tenant-diag select tenant={} queryParam={} queryOperator={}",
+                          tenantId, byParam, byOperator);
+            }
         } else if (type == MappingEventTypes.update_before) {
             ctx.get(MappingContextKeys.update)
                .ifPresent(u -> u.where(c -> c.is(TenantConstants.TENANT_ID_PROPERTY, tenantId)));

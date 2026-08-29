@@ -30,8 +30,21 @@ public final class TenantContext {
             .map(Dimension::getId);
     }
 
+    /**
+     * 平台管理员判定。两条独立依据，满足其一即可：
+     * <ol>
+     *     <li>绑定了平台管理员角色维度</li>
+     *     <li>拥有全量权限（{@code *:*}）——JetLinks 的 admin 由
+     *         {@code hsweb.authentication.defaults.user.admin} 配置直接授权，
+     *         其 Authentication 中并不带角色维度，只靠第 1 条会被误判为
+     *         「无租户」而套上 fail-closed（真机实测日志已确认）</li>
+     * </ol>
+     */
     public static boolean isPlatformAdmin(Authentication auth, String platformAdminRoleId) {
-        return auth.hasDimension(DefaultDimensionType.role, platformAdminRoleId);
+        if (auth.hasDimension(DefaultDimensionType.role, platformAdminRoleId)) {
+            return true;
+        }
+        return auth.hasPermission("*", "*");
     }
 
     /**
