@@ -111,6 +111,65 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
     }
 
     /**
+     * 订单退款：仅限已支付、未开票的订单。
+     * <p>
+     * 退款会<strong>回退租户的订阅到期时间</strong>（扣回本单顺延的月数），
+     * 否则会出现「钱退了但服务照用」的漏洞。
+     */
+    @Transactional
+    public Mono<Void> refund(String orderId, String reason) {
+        return findById(orderId)
+            .switchIfEmpty(Mono.error(() -> new BusinessException("error.tenant_order_not_found", 404, orderId)))
+            .flatMap(order -> {
+                if (order.getStatus() != TenantOrderStatus.paid) {
+                    return Mono.error(new BusinessException("error.tenant_order_not_paid", 400, orderId));
+                }
+                if (order.getInvoiceId() != null) {
+                    return Mono.error(new BusinessException("error.tenant_order_invoiced_cannot_refund", 400, orderId));
+                }
+                return rollbackSubscription(order)
+                    .then(createUpdate()
+                              .set(TenantOrderEntity::getStatus, TenantOrderStatus.refunded)
+                              .set(TenantOrderEntity::getRemark,
+                                   appendRemark(order.getRemark(), "退款: " + reason))
+                              .where(TenantOrderEntity::getId, orderId)
+                              .execute()
+                              .then());
+            });
+    }
+
+    /** 回退本单顺延的月数 */
+    private Mono<Void> rollbackSubscription(TenantOrderEntity order) {
+        int months = order.getMonths() == null ? 0 : order.getMonths();
+        if (months <= 0) {
+            return Mono.empty();
+        }
+        return tenantService
+            .findById(order.getTenantId())
+            .flatMap(tenant -> {
+                Long expire = tenant.getSubscribeExpireTime();
+                if (expire == null) {
+                    return Mono.empty();
+                }
+                long rolledBack = ZonedDateTime
+                    .ofInstant(Instant.ofEpochMilli(expire), ZoneId.systemDefault())
+                    .minusMonths(months)
+                    .toInstant()
+                    .toEpochMilli();
+                return tenantService
+                    .createUpdate()
+                    .set(TenantEntity::getSubscribeExpireTime, rolledBack)
+                    .where(TenantEntity::getId, order.getTenantId())
+                    .execute()
+                    .then();
+            });
+    }
+
+    static String appendRemark(String origin, String append) {
+        return origin == null || origin.isBlank() ? append : origin + " | " + append;
+    }
+
+    /**
      * 到期时间顺延: 未到期从原到期时间起算, 已到期/未订阅从当前时间起算, 按日历月累加
      */
     static long computeExpireAfter(Long currentExpire, int months, long now) {

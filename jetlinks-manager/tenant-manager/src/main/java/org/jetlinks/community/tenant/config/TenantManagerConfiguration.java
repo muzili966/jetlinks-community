@@ -26,6 +26,8 @@ import org.jetlinks.community.tenant.service.TenantQuotaResolver;
 import org.jetlinks.community.tenant.service.TenantService;
 import org.jetlinks.community.tenant.web.TenantController;
 import org.jetlinks.community.tenant.web.TenantImpersonationFilter;
+import org.jetlinks.community.tenant.service.TenantBillingService;
+import org.jetlinks.community.tenant.web.MySubscriptionController;
 import org.jetlinks.community.tenant.web.TenantOrderController;
 import org.jetlinks.community.tenant.web.TenantPlanController;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -145,8 +147,28 @@ public class TenantManagerConfiguration {
     }
 
     @Bean
-    public TenantOrderController tenantOrderController(TenantOrderService orderService) {
-        return new TenantOrderController(orderService);
+    public TenantOrderController tenantOrderController(TenantOrderService orderService,
+                                                       TenantBillingService billingService) {
+        return new TenantOrderController(orderService, billingService);
+    }
+
+    @Bean
+    public TenantBillingService tenantBillingService(TenantOrderService orderService,
+                                                     TenantInvoiceService invoiceService,
+                                                     TenantPlanService planService,
+                                                     TenantService tenantService) {
+        return new TenantBillingService(orderService, invoiceService, planService, tenantService);
+    }
+
+    @Bean
+    public MySubscriptionController mySubscriptionController(TenantService tenantService,
+                                                             TenantPlanService planService,
+                                                             TenantOrderService orderService,
+                                                             TenantInvoiceService invoiceService,
+                                                             TenantBillingService billingService,
+                                                             TenantQuotaResolver quotaResolver) {
+        return new MySubscriptionController(tenantService, planService, orderService,
+                                            invoiceService, billingService, quotaResolver);
     }
 
     @Bean

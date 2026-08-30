@@ -107,6 +107,27 @@ public class TenantInvoiceService extends GenericReactiveCrudService<TenantInvoi
             .set(TenantInvoiceEntity::getRemark, remark));
     }
 
+    /**
+     * 红冲：已开具的发票作废。
+     * <p>
+     * 与驳回的区别：驳回发生在开具前（申请被拒），红冲发生在开具后（发票已开错）。
+     * 两者都会释放订单，让租户可以重新申请。
+     */
+    @Transactional
+    public Mono<Void> voidInvoice(String invoiceId, String reason) {
+        return findById(invoiceId)
+            .switchIfEmpty(Mono.error(() -> new BusinessException("error.tenant_invoice_not_found", 404, invoiceId)))
+            .filter(invoice -> invoice.getStatus() == TenantInvoiceStatus.issued)
+            .switchIfEmpty(Mono.error(() -> new BusinessException("error.tenant_invoice_not_issued", 400, invoiceId)))
+            .flatMap(invoice -> createUpdate()
+                .set(TenantInvoiceEntity::getStatus, TenantInvoiceStatus.voided)
+                .set(TenantInvoiceEntity::getRejectReason, reason)
+                .where(TenantInvoiceEntity::getId, invoiceId)
+                .execute()
+                .then())
+            .then(unlockOrders(invoiceId));
+    }
+
     @Transactional
     public Mono<Void> reject(String invoiceId, String reason) {
         return transitPending(invoiceId, update -> update

@@ -14,8 +14,10 @@ import org.hswebframework.web.authorization.annotation.SaveAction;
 import org.hswebframework.web.crud.service.ReactiveCrudService;
 import org.hswebframework.web.crud.web.reactive.ReactiveServiceQueryController;
 import org.jetlinks.community.tenant.entity.TenantOrderEntity;
+import org.jetlinks.community.tenant.service.TenantBillingService;
 import org.jetlinks.community.tenant.service.TenantOrderService;
 import org.jetlinks.community.tenant.service.request.TenantSubscribeRequest;
+import org.jetlinks.community.tenant.web.response.BillingSummary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,6 +54,7 @@ import java.util.Map;
 public class TenantOrderController implements ReactiveServiceQueryController<TenantOrderEntity, String> {
 
     private final TenantOrderService service;
+    private final TenantBillingService billingService;
 
     @Override
     public ReactiveCrudService<TenantOrderEntity, String> getService() {
@@ -63,6 +66,21 @@ public class TenantOrderController implements ReactiveServiceQueryController<Ten
     @Operation(summary = "开通/续费套餐(线下收款即时生效, 免费套餐直接切换不产生订单)")
     public Mono<TenantOrderEntity> subscribe(@RequestBody @Valid Mono<TenantSubscribeRequest> request) {
         return request.flatMap(service::subscribe);
+    }
+
+    @GetMapping("/_summary")
+    @QueryAction
+    @Operation(summary = "计费概览(累计/本月收入、待开票、套餐分布、12个月趋势)")
+    public Mono<BillingSummary> summary() {
+        return billingService.summary();
+    }
+
+    @PostMapping("/{id}/_refund")
+    @SaveAction
+    @Operation(summary = "订单退款(仅限已支付且未开票, 会回退订阅到期时间)")
+    public Mono<Void> refund(@PathVariable String id,
+                             @RequestBody Mono<Map<String, String>> body) {
+        return body.flatMap(m -> service.refund(id, m.get("reason")));
     }
 
     private static final DateTimeFormatter EXPORT_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

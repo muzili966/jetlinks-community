@@ -16,7 +16,8 @@ public enum TenantInvoiceStatus implements EnumDict<String> {
 
     pending("待开具"),
     issued("已开具"),
-    rejected("已驳回");
+    rejected("已驳回"),
+    voided("已红冲");
 
     private final String text;
 

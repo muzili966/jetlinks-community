@@ -16,7 +16,8 @@ public enum TenantOrderStatus implements EnumDict<String> {
 
     pending("待支付"),
     paid("已支付"),
-    cancelled("已取消");
+    cancelled("已取消"),
+    refunded("已退款");
 
     private final String text;
 

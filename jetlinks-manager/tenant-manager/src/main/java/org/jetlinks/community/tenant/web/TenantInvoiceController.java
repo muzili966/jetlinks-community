@@ -55,6 +55,14 @@ public class TenantInvoiceController implements ReactiveServiceQueryController<T
         return body.flatMap(map -> service.issue(id, map.get("invoiceNo"), map.get("remark")));
     }
 
+    @PostMapping("/{id}/_void")
+    @SaveAction
+    @Operation(summary = "红冲发票(已开具的作废, 释放订单可重新申请)")
+    public Mono<Void> voidInvoice(@PathVariable String id,
+                                  @RequestBody Mono<Map<String, String>> body) {
+        return body.flatMap(m -> service.voidInvoice(id, m.get("reason")));
+    }
+
     @PostMapping("/{id}/_reject")
     @SaveAction
     @Operation(summary = "驳回申请(释放订单可重新申请)")
