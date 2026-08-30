@@ -3,6 +3,7 @@ package org.jetlinks.community.tenant.config;
 import org.hswebframework.web.crud.entity.factory.EntityMappingCustomizer;
 import org.hswebframework.web.crud.entity.factory.MapperEntityFactory;
 import org.jetlinks.community.auth.entity.MenuBindEntity;
+import org.jetlinks.community.auth.entity.MenuEntity;
 import org.jetlinks.community.auth.entity.OrganizationEntity;
 import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.auth.entity.RoleGroupEntity;
@@ -67,7 +68,13 @@ public class TenantEntityMappingCustomizer implements EntityMappingCustomizer {
         map(factory, RoleGroupEntity.class, TenantRoleGroupEntity.class);
         map(factory, UserDetailEntity.class, TenantUserDetailEntity.class);
         map(factory, ThirdPartyUserBindEntity.class, TenantThirdPartyUserBindEntity.class);
-        map(factory, MenuBindEntity.class, TenantMenuBindEntity.class);
+        // 菜单表不做租户隔离（平台与租户共用同一套定义），
+        // 但替换为带 scope 字段的子类，用于区分平台专属菜单与租户菜单
+        map(factory, MenuEntity.class, TenantMenuEntity.class);
+        // s_menu_bind（角色↔菜单授权关系）不做租户隔离：
+        // 角色本身已按租户隔离，再隔离绑定关系会导致租户用户查不到自己的菜单
+        // （真机现象：租户端菜单全空）。授权范围由 PlatformMenuGuard 在授权时把关。
+        // map(factory, MenuBindEntity.class, TenantMenuBindEntity.class);
         // components
         map(factory, FileEntity.class, TenantFileEntity.class);
         map(factory, PropertyMetricEntity.class, TenantPropertyMetricEntity.class);

@@ -23,13 +23,20 @@ import java.util.List;
 public final class PlatformMenuGuard {
 
     /**
-     * 平台专属菜单 code。租户角色不得被授予。
+     * 平台专属菜单 code 的兜底清单。
+     * <p>
+     * 首选依据是菜单表的 {@code scope} 字段（见 {@code TenantMenuEntity}）——
+     * 新增平台功能时在菜单管理里勾选归属即可，无需改代码。
+     * 本清单仅用于 scope 尚未设置（历史数据、导入的菜单）时的兜底判定。
      */
     private static final List<String> PLATFORM_ONLY_MENUS = Arrays.asList(
-        "system/Tenant",      // 租户管理（含套餐/订单/发票）
-        "system/Menu",        // 菜单管理
-        "system/Permission",  // 权限管理
-        "system/Platforms"    // 平台接入配置
+        "system/Tenant",         // 租户管理
+        "system/TenantPlan",     // 订阅套餐
+        "system/TenantOrder",    // 订单流水
+        "system/TenantInvoice",  // 发票管理
+        "system/Menu",           // 菜单管理
+        "system/Permission",     // 权限管理
+        "system/Platforms"       // 平台接入配置
     );
 
     private PlatformMenuGuard() {
