@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.hswebframework.web.exception.ValidationException;
 import org.jetlinks.community.cs.CsProperties;
 import org.jetlinks.community.cs.enums.CsChatMessageType;
+import org.jetlinks.community.io.file.FileInfo;
 
 import java.util.Locale;
 
@@ -54,6 +55,17 @@ public class CsAttachmentPolicy {
         if (!allowsSize(type, length)) {
             throw new ValidationException.NoStackTrace(ERROR_SIZE);
         }
+    }
+
+    /**
+     * 附件在消息里存相对路径而不是 {@link FileInfo#getAccessUrl()} 的绝对地址.
+     * 绝对地址来自系统配置 paths.base-path, 是上传那一刻的值; 官网、控制台、内外网访问到的域名都可能与它不同,
+     * 一旦不一致图片就加载不出来. 存相对路径由各端用自己的接口地址拼, 历史绝对地址各端按 http 前缀兼容.
+     */
+    public static String accessPath(FileInfo info) {
+        String extension = info.getExtension();
+        String path = "/file/" + info.getId() + (extension == null || extension.isBlank() ? "" : "." + extension);
+        return info.accessKey().map(key -> path + "?accessKey=" + key).orElse(path);
     }
 
     /** 会话列表里的最后一条摘要 */

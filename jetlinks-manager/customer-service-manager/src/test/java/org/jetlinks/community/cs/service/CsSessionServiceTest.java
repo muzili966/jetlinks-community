@@ -90,14 +90,16 @@ class CsSessionServiceTest {
     void attachmentMessageCarriesFileInfoAndTypedSummary() {
         CsSessionEntity session = session();
         FileInfo info = new FileInfo();
+        info.setId("f1");
+        info.setExtension("xlsx");
         info.setName("报价单.xlsx");
         info.setLength(2048L);
-        info.setAccessUrl("http://api/file/1.xlsx?accessKey=k");
+        info.setAccessUrl("http://10.0.0.1:8858/file/f1.xlsx");
         CsChatMessageEntity message = CsSessionService.buildAttachmentMessage(session, CsChatSender.visitor, CsChatMessageType.file, info, NOW);
         assertEquals(CsChatMessageType.file, message.getType());
         assertEquals("报价单.xlsx", message.getFileName());
         assertEquals(2048L, message.getFileSize());
-        assertEquals("http://api/file/1.xlsx?accessKey=k", message.getContent());
+        assertEquals("/file/f1.xlsx", message.getContent(), "存相对路径, 不能把上传时的主机名写死进消息");
 
         CsSessionService.applyMessage(session, message);
         assertEquals("[文件] 报价单.xlsx", session.getLastMessage());

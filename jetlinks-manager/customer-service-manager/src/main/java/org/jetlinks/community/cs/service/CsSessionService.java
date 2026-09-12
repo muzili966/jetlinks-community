@@ -517,7 +517,7 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
                                                       CsChatMessageType type,
                                                       FileInfo info,
                                                       long now) {
-        CsChatMessageEntity message = buildMessage(session, sender, info.getAccessUrl(), now);
+        CsChatMessageEntity message = buildMessage(session, sender, CsAttachmentPolicy.accessPath(info), now);
         message.setType(type);
         message.setFileName(info.getName());
         message.setFileSize(info.getLength());

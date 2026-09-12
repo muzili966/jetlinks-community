@@ -3,6 +3,7 @@ package org.jetlinks.community.cs.chat;
 import org.hswebframework.web.exception.ValidationException;
 import org.jetlinks.community.cs.CsProperties;
 import org.jetlinks.community.cs.enums.CsChatMessageType;
+import org.jetlinks.community.io.file.FileInfo;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
 
@@ -41,6 +42,25 @@ class CsAttachmentPolicyTest {
         assertFalse(small.allowsSize(CsChatMessageType.image, 10 * 1024 + 1));
         assertTrue(small.allowsSize(CsChatMessageType.file, 20 * 1024));
         assertThrows(ValidationException.class, () -> small.assertSize(CsChatMessageType.file, 20 * 1024 + 1));
+    }
+
+    @Test
+    void accessPathIsRelativeSoEachClientCanResolveIt() {
+        FileInfo info = new FileInfo();
+        info.setId("abc123");
+        info.setExtension("png");
+        info.setAccessUrl("http://10.0.0.1:8858/file/abc123.png?accessKey=k1");
+        info.withAccessKey("k1");
+        assertEquals("/file/abc123.png?accessKey=k1", CsAttachmentPolicy.accessPath(info));
+
+        FileInfo noKey = new FileInfo();
+        noKey.setId("abc123");
+        noKey.setExtension("pdf");
+        assertEquals("/file/abc123.pdf", CsAttachmentPolicy.accessPath(noKey));
+
+        FileInfo noExt = new FileInfo();
+        noExt.setId("abc123");
+        assertEquals("/file/abc123", CsAttachmentPolicy.accessPath(noExt));
     }
 
     @Test
