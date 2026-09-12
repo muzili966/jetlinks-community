@@ -80,6 +80,20 @@ customer-service:
 | `GET /cs/public/session/{id}/events?token=` | SSE 订阅会话事件（message / accepted / transferred / closed / contact），25s 心跳 |
 | `POST /cs/public/session/{id}/_read` `_contact` `_close` `_rate` | 已读、补充联系方式、结束、评价 |
 
+### 联系客服（控制台已登录用户）
+
+登录即可调用，不需要额外授权——每个租户用户都该能找到客服。称呼、手机号（取自用户详情）、所属租户由后端按当前登录身份自动登记，前端不传。
+
+| 路径 | 说明 |
+| --- | --- |
+| `GET /cs/support/_status` | 坐席是否在线 + 我当前进行中的会话 |
+| `POST /cs/support/_open` | 发起会话；已有进行中的会话直接返回它，同一个人不会开出一堆并行会话 |
+| `GET /cs/support/_sessions` | 我最近 10 次会话（含已结束），用于展示历史对话 |
+| `GET /cs/support/{id}/messages` | 某次会话的消息 |
+| `POST /cs/support/{id}/message` `attachment` `_read` `_close` `_rate` | 发消息、发附件、已读、结束、评价 |
+
+实时消息走平台 WebSocket 订阅 topic `/cs/my-session`，订阅参数带 `sessionId`，订阅前校验会话确实属于当前登录用户。
+
 ### 在线会话（坐席）
 
 | 路径 | 权限 | 说明 |
