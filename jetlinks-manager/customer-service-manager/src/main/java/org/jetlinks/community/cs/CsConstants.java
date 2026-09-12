@@ -19,6 +19,11 @@ public interface CsConstants {
     String RESOURCE_INBOX = "cs-inbox";
 
     /**
+     * 在线会话资源权限ID(坐席工作台)
+     */
+    String RESOURCE_SESSION = "cs-session";
+
+    /**
      * 站内通知的 topicProvider, 通知中心据此分组
      */
     String NOTIFY_TOPIC_PROVIDER = "cs-inbox";

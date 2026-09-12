@@ -5,14 +5,23 @@ import org.hswebframework.web.system.authorization.api.entity.UserEntity;
 import org.hswebframework.web.system.authorization.defaults.service.DefaultDimensionUserService;
 import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.cs.CsProperties;
+import org.jetlinks.community.cs.chat.CsChatEventPublisher;
+import org.jetlinks.community.cs.chat.CsVisitorEventStream;
+import org.jetlinks.community.cs.chat.CsWorkbenchSubscriptionProvider;
+import org.jetlinks.community.cs.entity.CsChatMessageEntity;
 import org.jetlinks.community.cs.entity.CsLeadFollowEntity;
 import org.jetlinks.community.cs.role.CsRoleInitializer;
 import org.jetlinks.community.cs.service.CsAgentNotifier;
+import org.jetlinks.community.cs.service.CsAgentService;
+import org.jetlinks.community.cs.service.CsChatRateLimiters;
 import org.jetlinks.community.cs.service.CsInboxCleaner;
 import org.jetlinks.community.cs.service.CsInboxRateLimiter;
 import org.jetlinks.community.cs.service.CsInboxService;
 import org.jetlinks.community.cs.service.CsLeadService;
+import org.jetlinks.community.cs.service.CsSessionIdleCloser;
+import org.jetlinks.community.cs.service.CsSessionService;
 import org.jetlinks.community.notify.NotifierManager;
+import org.jetlinks.core.event.EventBus;
 import org.jetlinks.community.notify.manager.service.NotificationService;
 import org.jetlinks.community.tenant.service.TenantService;
 import org.springframework.beans.factory.ObjectProvider;
@@ -77,5 +86,46 @@ public class CsManagerConfiguration {
     public CsRoleInitializer csRoleInitializer(CsProperties properties,
                                                ReactiveRepository<RoleEntity, String> roleRepository) {
         return new CsRoleInitializer(properties, roleRepository);
+    }
+
+    // ---------- 在线会话 ----------
+
+    @Bean
+    public CsAgentService csAgentService(CsProperties properties) {
+        return new CsAgentService(properties);
+    }
+
+    @Bean
+    public CsChatEventPublisher csChatEventPublisher(EventBus eventBus) {
+        return new CsChatEventPublisher(eventBus);
+    }
+
+    @Bean
+    public CsSessionService csSessionService(CsProperties properties,
+                                             CsAgentService agentService,
+                                             ReactiveRepository<CsChatMessageEntity, String> messageRepository,
+                                             CsLeadService leadService,
+                                             CsChatEventPublisher publisher) {
+        return new CsSessionService(properties, agentService, messageRepository, leadService, publisher);
+    }
+
+    @Bean
+    public CsChatRateLimiters csChatRateLimiters(CsProperties properties) {
+        return new CsChatRateLimiters(properties.getChat(), Clock.systemUTC());
+    }
+
+    @Bean
+    public CsVisitorEventStream csVisitorEventStream(EventBus eventBus) {
+        return new CsVisitorEventStream(eventBus);
+    }
+
+    @Bean
+    public CsWorkbenchSubscriptionProvider csWorkbenchSubscriptionProvider(EventBus eventBus) {
+        return new CsWorkbenchSubscriptionProvider(eventBus);
+    }
+
+    @Bean
+    public CsSessionIdleCloser csSessionIdleCloser(CsProperties properties, CsSessionService sessionService) {
+        return new CsSessionIdleCloser(properties, sessionService);
     }
 }

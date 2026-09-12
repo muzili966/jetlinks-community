@@ -5,20 +5,18 @@ import lombok.Getter;
 import org.hswebframework.web.dict.EnumDict;
 
 /**
- * 线索来源.
+ * 坐席状态: 只有在线才参与自动分配.
  *
  * @author customer-service-manager
  * @since 2.11
  */
 @Getter
 @AllArgsConstructor
-public enum CsLeadSource implements EnumDict<String> {
+public enum CsAgentStatus implements EnumDict<String> {
 
-    website("官网留言"),
-    chat("在线会话"),
-    manual("手动录入"),
-    wecom("企业微信"),
-    other("其他");
+    online("在线"),
+    busy("忙碌"),
+    offline("离线");
 
     private final String text;
 

@@ -16,8 +16,8 @@ import org.jetlinks.community.cs.entity.CsLeadEntity;
 import org.jetlinks.community.cs.entity.CsLeadFollowEntity;
 import org.jetlinks.community.cs.enums.CsLeadSource;
 import org.jetlinks.community.cs.enums.CsLeadState;
-import org.jetlinks.community.cs.lead.ContactKeys;
 import org.jetlinks.community.cs.lead.CsLeadStateMachine;
+import org.jetlinks.community.cs.lead.LeadDraft;
 import org.jetlinks.community.cs.service.request.CsConvertRequest;
 import org.jetlinks.community.cs.service.request.CsFollowRequest;
 import org.jetlinks.community.cs.service.request.CsInboxSubmitRequest;
@@ -61,12 +61,18 @@ public class CsLeadService extends GenericReactiveCrudService<CsLeadEntity, Stri
      */
     @Transactional
     public Mono<CsLeadEntity> findOrCreateForContact(CsInboxSubmitRequest request) {
-        String phone = ContactKeys.normalizePhone(request.getPhone());
-        String wechat = ContactKeys.normalizeWechat(request.getWechat());
-        return findLatestByPhone(phone)
-            .switchIfEmpty(Mono.defer(() -> findLatestByWechat(wechat)))
+        return findOrCreate(LeadDraft.fromInbox(request));
+    }
+
+    /**
+     * 在线会话转线索走同一条归并路径, 只是来源不同.
+     */
+    @Transactional
+    public Mono<CsLeadEntity> findOrCreate(LeadDraft draft) {
+        return findLatestByPhone(draft.getPhone())
+            .switchIfEmpty(Mono.defer(() -> findLatestByWechat(draft.getWechat())))
             .flatMap(this::reactivateIfInvalid)
-            .switchIfEmpty(Mono.defer(() -> insertLead(buildLead(request, phone, wechat))));
+            .switchIfEmpty(Mono.defer(() -> insertLead(buildLead(draft))));
     }
 
     private Mono<CsLeadEntity> findLatestByPhone(String phone) {
@@ -103,17 +109,17 @@ public class CsLeadService extends GenericReactiveCrudService<CsLeadEntity, Stri
             .thenReturn(lead);
     }
 
-    static CsLeadEntity buildLead(CsInboxSubmitRequest request, String phone, String wechat) {
+    static CsLeadEntity buildLead(LeadDraft draft) {
         CsLeadEntity lead = new CsLeadEntity();
         lead.setId(IDGenerator.SNOW_FLAKE_STRING.generate());
-        lead.setName(request.getName());
-        lead.setPhone(phone);
-        lead.setWechat(wechat);
-        lead.setCompany(request.getCompany());
-        lead.setSummary(request.getContent());
-        lead.setSource(CsLeadSource.website);
-        lead.setSourcePage(request.getSourcePage());
-        lead.setUtm(request.getUtm());
+        lead.setName(draft.getName());
+        lead.setPhone(draft.getPhone());
+        lead.setWechat(draft.getWechat());
+        lead.setCompany(draft.getCompany());
+        lead.setSummary(draft.getSummary());
+        lead.setSource(draft.getSource() == null ? CsLeadSource.other : draft.getSource());
+        lead.setSourcePage(draft.getSourcePage());
+        lead.setUtm(draft.getUtm());
         lead.setState(CsLeadState.pending);
         lead.setFollowCount(0);
         lead.setMessageCount(0);

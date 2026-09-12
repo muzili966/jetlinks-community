@@ -5,20 +5,18 @@ import lombok.Getter;
 import org.hswebframework.web.dict.EnumDict;
 
 /**
- * 线索来源.
+ * 会话消息发送方.
  *
  * @author customer-service-manager
  * @since 2.11
  */
 @Getter
 @AllArgsConstructor
-public enum CsLeadSource implements EnumDict<String> {
+public enum CsChatSender implements EnumDict<String> {
 
-    website("官网留言"),
-    chat("在线会话"),
-    manual("手动录入"),
-    wecom("企业微信"),
-    other("其他");
+    visitor("访客"),
+    agent("客服"),
+    system("系统");
 
     private final String text;
 

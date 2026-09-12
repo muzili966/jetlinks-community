@@ -3,6 +3,7 @@ package org.jetlinks.community.cs.service;
 import org.jetlinks.community.cs.entity.CsLeadEntity;
 import org.jetlinks.community.cs.enums.CsLeadSource;
 import org.jetlinks.community.cs.enums.CsLeadState;
+import org.jetlinks.community.cs.lead.LeadDraft;
 import org.jetlinks.community.cs.service.request.CsConvertRequest;
 import org.jetlinks.community.cs.service.request.CsInboxSubmitRequest;
 import org.jetlinks.community.tenant.entity.TenantEntity;
@@ -28,7 +29,7 @@ class CsLeadServiceTest {
 
     @Test
     void newLeadStartsPendingFromWebsite() {
-        CsLeadEntity lead = CsLeadService.buildLead(request(), "13800138000", null);
+        CsLeadEntity lead = CsLeadService.buildLead(LeadDraft.fromInbox(request()));
         assertNotNull(lead.getId());
         assertEquals(CsLeadState.pending, lead.getState());
         assertEquals(CsLeadSource.website, lead.getSource());
@@ -56,7 +57,7 @@ class CsLeadServiceTest {
 
     @Test
     void newTenantNameFallsBackToCompanyThenName() {
-        CsLeadEntity lead = CsLeadService.buildLead(request(), "13800138000", null);
+        CsLeadEntity lead = CsLeadService.buildLead(LeadDraft.fromInbox(request()));
         CsConvertRequest convert = new CsConvertRequest();
         convert.setNewTenantId("t-001");
         convert.setPlanId("standard");

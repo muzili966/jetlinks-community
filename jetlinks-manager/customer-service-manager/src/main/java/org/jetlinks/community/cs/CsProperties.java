@@ -51,6 +51,53 @@ public class CsProperties {
 
     private Notify notify = new Notify();
 
+    private Chat chat = new Chat();
+
+    @Getter
+    @Setter
+    public static class Chat {
+
+        /**
+         * 会话无新消息超过此时长后由系统自动结束(排队中与接待中都算)
+         */
+        private Duration idleTimeout = Duration.ofMinutes(30);
+
+        /**
+         * 空闲会话扫描周期
+         */
+        private Duration idleCheckInterval = Duration.ofMinutes(1);
+
+        /**
+         * 坐席未单独设置时的同时接待上限
+         */
+        private int defaultMaxConcurrent = 5;
+
+        /**
+         * 同一 IP 每小时最多发起的会话数
+         */
+        private int sessionRateLimitPerHour = 20;
+
+        /**
+         * 同一会话每分钟最多发送的消息数
+         */
+        private int messageRateLimitPerMinute = 30;
+
+        /**
+         * 单条消息最大长度
+         */
+        private int messageMaxLength = 1000;
+
+        /**
+         * 拉取历史消息的最大条数
+         */
+        private int historyLimit = 200;
+
+        /**
+         * 访客 SSE 心跳间隔, 防止反向代理按空闲超时断开
+         */
+        private Duration heartbeatInterval = Duration.ofSeconds(25);
+    }
+
     @Getter
     @Setter
     public static class Inbox {

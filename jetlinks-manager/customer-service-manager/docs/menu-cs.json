@@ -17,6 +17,90 @@
     "permissions": [],
     "children": [
       {
+        "code": "cs/Workbench",
+        "name": "坐席工作台",
+        "owner": "iot",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "坐席工作台",
+            "en_US": "Workbench",
+            "en": "Workbench"
+          }
+        },
+        "id": "cs-menu-000000000000000000000004",
+        "parentId": "cs-menu-000000000000000000000001",
+        "url": "/cs/Workbench",
+        "icon": "icon-tongzhiguanli",
+        "sortIndex": 0,
+        "showPage": [
+          "cs-session"
+        ],
+        "permissions": [
+          {
+            "permission": "cs-session",
+            "actions": [
+              "query"
+            ]
+          }
+        ],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "permissions": [
+              {
+                "permission": "cs-session",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "chat",
+            "name": "接待与回复",
+            "permissions": [
+              {
+                "permission": "cs-session",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "transfer",
+            "name": "转接",
+            "permissions": [
+              {
+                "permission": "cs-session",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "lead",
+            "name": "转为线索",
+            "permissions": [
+              {
+                "permission": "cs-session",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
         "code": "cs/Inbox",
         "name": "留言箱",
         "owner": "iot",
@@ -32,18 +116,41 @@
         "url": "/cs/Inbox",
         "icon": "icon-tongzhiguanli",
         "sortIndex": 1,
-        "showPage": ["cs-inbox"],
-        "permissions": [{ "permission": "cs-inbox", "actions": ["query"] }],
+        "showPage": [
+          "cs-inbox"
+        ],
+        "permissions": [
+          {
+            "permission": "cs-inbox",
+            "actions": [
+              "query"
+            ]
+          }
+        ],
         "buttons": [
           {
             "id": "view",
             "name": "查看",
-            "permissions": [{ "permission": "cs-inbox", "actions": ["query"] }]
+            "permissions": [
+              {
+                "permission": "cs-inbox",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
           },
           {
             "id": "read",
             "name": "标记已读",
-            "permissions": [{ "permission": "cs-inbox", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-inbox",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           }
         ]
       },
@@ -63,56 +170,131 @@
         "url": "/cs/Lead",
         "icon": "icon-zuzhi",
         "sortIndex": 2,
-        "showPage": ["cs-lead"],
-        "permissions": [{ "permission": "cs-lead", "actions": ["query"] }],
+        "showPage": [
+          "cs-lead"
+        ],
+        "permissions": [
+          {
+            "permission": "cs-lead",
+            "actions": [
+              "query"
+            ]
+          }
+        ],
         "buttons": [
           {
             "id": "view",
             "name": "查看",
-            "permissions": [{ "permission": "cs-lead", "actions": ["query"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
           },
           {
             "id": "add",
             "name": "录入线索",
-            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           },
           {
             "id": "update",
             "name": "编辑",
-            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           },
           {
             "id": "claim",
             "name": "认领",
-            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           },
           {
             "id": "assign",
             "name": "指派",
-            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           },
           {
             "id": "follow",
             "name": "跟进",
-            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
           },
           {
             "id": "convert",
             "name": "转化为租户",
             "permissions": [
-              { "permission": "cs-lead", "actions": ["save"] },
-              { "permission": "tenant", "actions": ["save"] }
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "tenant",
+                "actions": [
+                  "save"
+                ]
+              }
             ]
           },
           {
             "id": "export",
             "name": "导出",
-            "permissions": [{ "permission": "cs-lead", "actions": ["query"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
           },
           {
             "id": "delete",
             "name": "删除",
-            "permissions": [{ "permission": "cs-lead", "actions": ["delete"] }]
+            "permissions": [
+              {
+                "permission": "cs-lead",
+                "actions": [
+                  "delete"
+                ]
+              }
+            ]
           }
         ]
       }
