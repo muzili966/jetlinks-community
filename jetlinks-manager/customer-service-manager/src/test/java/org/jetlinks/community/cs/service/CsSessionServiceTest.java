@@ -3,7 +3,9 @@ package org.jetlinks.community.cs.service;
 import org.jetlinks.community.cs.entity.CsAgentEntity;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
 import org.jetlinks.community.cs.entity.CsSessionEntity;
+import org.jetlinks.community.cs.enums.CsChatMessageType;
 import org.jetlinks.community.cs.enums.CsChatSender;
+import org.jetlinks.community.io.file.FileInfo;
 import org.jetlinks.community.cs.enums.CsSessionState;
 import org.jetlinks.community.cs.service.request.CsSessionOpenRequest;
 import org.jetlinks.community.cs.web.ClientInfo;
@@ -82,6 +84,28 @@ class CsSessionServiceTest {
         assertEquals("小王", fromAgent.getSenderName());
         assertEquals(CsSessionService.SYSTEM_SENDER_NAME,
                      CsSessionService.buildMessage(session, CsChatSender.system, "x", NOW).getSenderName());
+    }
+
+    @Test
+    void attachmentMessageCarriesFileInfoAndTypedSummary() {
+        CsSessionEntity session = session();
+        FileInfo info = new FileInfo();
+        info.setName("报价单.xlsx");
+        info.setLength(2048L);
+        info.setAccessUrl("http://api/file/1.xlsx?accessKey=k");
+        CsChatMessageEntity message = CsSessionService.buildAttachmentMessage(session, CsChatSender.visitor, CsChatMessageType.file, info, NOW);
+        assertEquals(CsChatMessageType.file, message.getType());
+        assertEquals("报价单.xlsx", message.getFileName());
+        assertEquals(2048L, message.getFileSize());
+        assertEquals("http://api/file/1.xlsx?accessKey=k", message.getContent());
+
+        CsSessionService.applyMessage(session, message);
+        assertEquals("[文件] 报价单.xlsx", session.getLastMessage());
+        assertEquals(1, session.getAgentUnread());
+
+        CsChatMessageEntity text = CsSessionService.buildMessage(session, CsChatSender.agent, "好的", NOW + 1);
+        assertEquals(CsChatMessageType.text, text.getType());
+        assertEquals("好的", CsSessionService.summaryOf(text));
     }
 
     @Test

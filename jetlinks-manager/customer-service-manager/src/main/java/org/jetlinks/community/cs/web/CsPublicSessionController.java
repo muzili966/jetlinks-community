@@ -29,6 +29,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
@@ -94,6 +96,15 @@ public class CsPublicSessionController {
                                           @RequestBody @Valid Mono<CsChatMessageRequest> body) {
         return body.flatMap(request -> limit(rateLimiters.getMessages(), id, "message")
             .then(sessionService.visitorMessage(id, token, request.validated(properties.getChat().getMessageMaxLength()))));
+    }
+
+    @PostMapping(value = "/{id}/attachment", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "访客发送图片 / 视频 / 文件(multipart 字段 file)")
+    public Mono<CsChatMessageEntity> attachment(@PathVariable String id,
+                                                @RequestParam String token,
+                                                @RequestPart("file") Mono<FilePart> file) {
+        return file.flatMap(part -> limit(rateLimiters.getMessages(), id, "attachment")
+            .then(sessionService.visitorAttachment(id, token, part)));
     }
 
     @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

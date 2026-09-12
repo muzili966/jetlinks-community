@@ -25,11 +25,14 @@ VALUES
      (extract(epoch FROM now()) * 1000)::bigint),
     ('cs-session', '客服在线会话', '坐席工作台与在线会话', 1,
      '[{"action":"query","name":"查询"},{"action":"save","name":"保存"}]',
+     (extract(epoch FROM now()) * 1000)::bigint),
+    ('cs-faq', '客服常见问题', '官网常见问题与坐席常用回复', 1,
+     '[{"action":"query","name":"查询"},{"action":"save","name":"保存"},{"action":"delete","name":"删除"}]',
      (extract(epoch FROM now()) * 1000)::bigint)
 ON CONFLICT (id) DO UPDATE SET
     name = excluded.name, describe = excluded.describe, status = 1, actions = excluded.actions;
 
--- 2. 菜单：一级「客服中心」 + 坐席工作台 + 留言箱 + 线索管理
+-- 2. 菜单：一级「客服中心」 + 坐席工作台 + 留言箱 + 线索管理 + 常见问题
 INSERT INTO s_menu (
     id, parent_id, path, sort_index, _level, owner, name, code, url, icon,
     status, scope, permissions, buttons, options, i18n_messages, create_time
@@ -80,6 +83,18 @@ INSERT INTO s_menu (
     '{"show":true,"appName":"customer-service-manager"}',
     '{"name":{"zh_CN":"坐席工作台","en_US":"Workbench"}}',
     (extract(epoch FROM now()) * 1000)::bigint
+),
+(
+    'cs0faq000000menu0000000000000005', 'cs0center000group0menu0000000001', 'Cs0a-Cs0e', 3, 2, 'iot',
+    '常见问题', 'cs/Faq', '/cs/Faq', 'icon-tongzhiguanli', 1, 'platform',
+    '[{"permission":"cs-faq","actions":["query","save","delete"]}]',
+    '[{"id":"view","name":"查看","permissions":[{"permission":"cs-faq","actions":["query"]}]},'
+    || '{"id":"add","name":"新增","permissions":[{"permission":"cs-faq","actions":["save"]}]},'
+    || '{"id":"update","name":"编辑","permissions":[{"permission":"cs-faq","actions":["save"]}]},'
+    || '{"id":"delete","name":"删除","permissions":[{"permission":"cs-faq","actions":["delete"]}]}]',
+    '{"show":true,"appName":"customer-service-manager"}',
+    '{"name":{"zh_CN":"常见问题","en_US":"FAQ"}}',
+    (extract(epoch FROM now()) * 1000)::bigint
 )
 ON CONFLICT (id) DO UPDATE SET
     parent_id = excluded.parent_id, path = excluded.path, _level = excluded._level,
@@ -96,14 +111,14 @@ SELECT md5(r.id || '|' || m.id), 'role', r.id, md5('role|' || r.id), m.id, 'iot'
 FROM s_role r
 CROSS JOIN s_menu m
 WHERE r.id IN ('cs-agent', 'cs-supervisor')
-  AND m.id IN ('cs0center000group0menu0000000001', 'cs0inbox0000menu0000000000000002', 'cs0lead00000menu0000000000000003', 'cs0workbenchmenu0000000000000004')
+  AND m.id IN ('cs0center000group0menu0000000001', 'cs0inbox0000menu0000000000000002', 'cs0lead00000menu0000000000000003', 'cs0workbenchmenu0000000000000004', 'cs0faq000000menu0000000000000005')
 ON CONFLICT (id) DO UPDATE SET options = excluded.options, buttons = excluded.buttons;
 
 -- 校验
 SELECT m.code, m.name, m._level, m.sort_index, m.scope, count(b.id) AS bound_roles
 FROM s_menu m LEFT JOIN s_menu_bind b ON b.menu_id = m.id AND b.target_type = 'role'
-WHERE m.code IN ('cs', 'cs/Workbench', 'cs/Inbox', 'cs/Lead')
+WHERE m.code IN ('cs', 'cs/Workbench', 'cs/Inbox', 'cs/Lead', 'cs/Faq')
 GROUP BY m.id ORDER BY m._level, m.sort_index;
 
-SELECT id, name, status FROM s_permission WHERE id IN ('cs-inbox', 'cs-lead', 'cs-session');
+SELECT id, name, status FROM s_permission WHERE id IN ('cs-inbox', 'cs-lead', 'cs-session', 'cs-faq');
 SELECT id, name FROM s_role WHERE id IN ('cs-agent', 'cs-supervisor');

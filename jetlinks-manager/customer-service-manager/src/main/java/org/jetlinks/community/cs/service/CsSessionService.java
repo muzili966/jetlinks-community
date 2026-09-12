@@ -8,9 +8,11 @@ import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.crud.service.GenericReactiveCrudService;
 import org.hswebframework.web.exception.BusinessException;
 import org.hswebframework.web.exception.NotFoundException;
+import org.hswebframework.web.exception.ValidationException;
 import org.hswebframework.web.id.IDGenerator;
 import org.jetlinks.community.cs.CsProperties;
 import org.jetlinks.community.cs.chat.CsAgentPicker;
+import org.jetlinks.community.cs.chat.CsAttachmentPolicy;
 import org.jetlinks.community.cs.chat.CsChatEventPublisher;
 import org.jetlinks.community.cs.chat.CsSessionEvent;
 import org.jetlinks.community.cs.chat.CsSessionStateMachine;
@@ -19,6 +21,7 @@ import org.jetlinks.community.cs.entity.CsAgentEntity;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
 import org.jetlinks.community.cs.entity.CsLeadEntity;
 import org.jetlinks.community.cs.entity.CsSessionEntity;
+import org.jetlinks.community.cs.enums.CsChatMessageType;
 import org.jetlinks.community.cs.enums.CsChatSender;
 import org.jetlinks.community.cs.enums.CsSessionState;
 import org.jetlinks.community.cs.service.request.CsSessionContactRequest;
@@ -26,6 +29,10 @@ import org.jetlinks.community.cs.service.request.CsSessionLeadRequest;
 import org.jetlinks.community.cs.service.request.CsSessionOpenRequest;
 import org.jetlinks.community.cs.service.request.CsSessionRateRequest;
 import org.jetlinks.community.cs.web.ClientInfo;
+import org.jetlinks.community.io.file.FileInfo;
+import org.jetlinks.community.io.file.FileManager;
+import org.jetlinks.community.io.file.FileOption;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -61,17 +68,22 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
     private final ReactiveRepository<CsChatMessageEntity, String> messageRepository;
     private final CsLeadService leadService;
     private final CsChatEventPublisher publisher;
+    private final FileManager fileManager;
+    private final CsAttachmentPolicy attachmentPolicy;
 
     public CsSessionService(CsProperties properties,
                             CsAgentService agentService,
                             ReactiveRepository<CsChatMessageEntity, String> messageRepository,
                             CsLeadService leadService,
-                            CsChatEventPublisher publisher) {
+                            CsChatEventPublisher publisher,
+                            FileManager fileManager) {
         this.properties = properties;
         this.agentService = agentService;
         this.messageRepository = messageRepository;
         this.leadService = leadService;
         this.publisher = publisher;
+        this.fileManager = fileManager;
+        this.attachmentPolicy = new CsAttachmentPolicy(properties.getChat());
     }
 
     // ---------- 访客侧 ----------
@@ -119,6 +131,12 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
     public Mono<CsChatMessageEntity> visitorMessage(String sessionId, String token, String content) {
         return findForVisitor(sessionId, token)
             .flatMap(session -> send(session, CsChatSender.visitor, content));
+    }
+
+    @Transactional
+    public Mono<CsChatMessageEntity> visitorAttachment(String sessionId, String token, FilePart file) {
+        return findForVisitor(sessionId, token)
+            .flatMap(session -> sendAttachment(session, CsChatSender.visitor, file));
     }
 
     @Transactional
@@ -225,6 +243,12 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
     public Mono<CsChatMessageEntity> agentMessage(String sessionId, String content) {
         return findHandledByCurrent(sessionId)
             .flatMap(session -> send(session, CsChatSender.agent, content));
+    }
+
+    @Transactional
+    public Mono<CsChatMessageEntity> agentAttachment(String sessionId, FilePart file) {
+        return findHandledByCurrent(sessionId)
+            .flatMap(session -> sendAttachment(session, CsChatSender.agent, file));
     }
 
     @Transactional
@@ -361,8 +385,25 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
 
     private Mono<CsChatMessageEntity> send(CsSessionEntity session, CsChatSender sender, String content) {
         CsSessionStateMachine.assertChat(session.getState());
-        long now = System.currentTimeMillis();
-        CsChatMessageEntity message = buildMessage(session, sender, content, now);
+        return deliver(session, buildMessage(session, sender, content, System.currentTimeMillis()));
+    }
+
+    /**
+     * 附件: 先按扩展名归类(不在白名单直接拒绝), 存到平台文件服务(公开访问), 超过该类型上限则删掉文件再报错.
+     */
+    private Mono<CsChatMessageEntity> sendAttachment(CsSessionEntity session, CsChatSender sender, FilePart file) {
+        CsSessionStateMachine.assertChat(session.getState());
+        CsChatMessageType type = attachmentPolicy.classify(file.filename());
+        return fileManager
+            .saveFile(file, FileOption.publicAccess)
+            .flatMap(info -> attachmentPolicy.allowsSize(type, info.getLength())
+                ? Mono.just(info)
+                : fileManager.delete(info.getId())
+                             .then(Mono.error(() -> new ValidationException.NoStackTrace(CsAttachmentPolicy.ERROR_SIZE))))
+            .flatMap(info -> deliver(session, buildAttachmentMessage(session, sender, type, info, System.currentTimeMillis())));
+    }
+
+    private Mono<CsChatMessageEntity> deliver(CsSessionEntity session, CsChatMessageEntity message) {
         applyMessage(session, message);
         return messageRepository
             .insert(message)
@@ -465,8 +506,21 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
         message.setSessionId(session.getId());
         message.setSender(sender);
         message.setSenderName(senderName(session, sender));
+        message.setType(CsChatMessageType.text);
         message.setContent(content);
         message.setCreateTime(now);
+        return message;
+    }
+
+    static CsChatMessageEntity buildAttachmentMessage(CsSessionEntity session,
+                                                      CsChatSender sender,
+                                                      CsChatMessageType type,
+                                                      FileInfo info,
+                                                      long now) {
+        CsChatMessageEntity message = buildMessage(session, sender, info.getAccessUrl(), now);
+        message.setType(type);
+        message.setFileName(info.getName());
+        message.setFileSize(info.getLength());
         return message;
     }
 
@@ -484,7 +538,7 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
      * 消息落到会话上: 摘要、时间、计数, 以及对方的未读数.
      */
     static CsSessionEntity applyMessage(CsSessionEntity session, CsChatMessageEntity message) {
-        session.setLastMessage(summarize(message.getContent()));
+        session.setLastMessage(summaryOf(message));
         session.setLastMessageAt(message.getCreateTime());
         session.setMessageCount(count(session.getMessageCount()) + 1);
         if (message.getSender() == CsChatSender.visitor) {
@@ -494,6 +548,11 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
             session.setVisitorUnread(count(session.getVisitorUnread()) + 1);
         }
         return session;
+    }
+
+    static String summaryOf(CsChatMessageEntity message) {
+        CsChatMessageType type = message.typeOrText();
+        return type.isAttachment() ? CsAttachmentPolicy.summaryOf(type, message.getFileName()) : summarize(message.getContent());
     }
 
     static String summarize(String content) {

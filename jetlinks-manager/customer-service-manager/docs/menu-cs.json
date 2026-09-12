@@ -297,6 +297,84 @@
             ]
           }
         ]
+      },
+      {
+        "code": "cs/Faq",
+        "name": "常见问题",
+        "owner": "iot",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "常见问题",
+            "en_US": "FAQ",
+            "en": "FAQ"
+          }
+        },
+        "id": "cs-menu-000000000000000000000005",
+        "parentId": "cs-menu-000000000000000000000001",
+        "url": "/cs/Faq",
+        "icon": "icon-tongzhiguanli",
+        "sortIndex": 3,
+        "showPage": [
+          "cs-faq"
+        ],
+        "permissions": [
+          {
+            "permission": "cs-faq",
+            "actions": [
+              "query"
+            ]
+          }
+        ],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "permissions": [
+              {
+                "permission": "cs-faq",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "add",
+            "name": "新增",
+            "permissions": [
+              {
+                "permission": "cs-faq",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "update",
+            "name": "编辑",
+            "permissions": [
+              {
+                "permission": "cs-faq",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "delete",
+            "name": "删除",
+            "permissions": [
+              {
+                "permission": "cs-faq",
+                "actions": [
+                  "delete"
+                ]
+              }
+            ]
+          }
+        ]
       }
     ]
   }

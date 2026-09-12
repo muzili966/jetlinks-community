@@ -30,6 +30,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -117,6 +120,13 @@ public class CsSessionController implements ReactiveServiceQueryController<CsSes
     @Operation(summary = "坐席发送消息")
     public Mono<CsChatMessageEntity> send(@PathVariable String id, @RequestBody @Valid Mono<CsChatMessageRequest> body) {
         return body.flatMap(request -> service.agentMessage(id, request.validated(properties.getChat().getMessageMaxLength())));
+    }
+
+    @PostMapping(value = "/{id}/attachment", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SaveAction
+    @Operation(summary = "坐席发送图片 / 视频 / 文件(multipart 字段 file)")
+    public Mono<CsChatMessageEntity> attachment(@PathVariable String id, @RequestPart("file") Mono<FilePart> file) {
+        return file.flatMap(part -> service.agentAttachment(id, part));
     }
 
     @PostMapping("/{id}/_read")

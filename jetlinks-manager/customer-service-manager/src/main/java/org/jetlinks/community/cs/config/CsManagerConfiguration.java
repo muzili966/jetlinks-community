@@ -14,12 +14,14 @@ import org.jetlinks.community.cs.role.CsRoleInitializer;
 import org.jetlinks.community.cs.service.CsAgentNotifier;
 import org.jetlinks.community.cs.service.CsAgentService;
 import org.jetlinks.community.cs.service.CsChatRateLimiters;
+import org.jetlinks.community.cs.service.CsFaqService;
 import org.jetlinks.community.cs.service.CsInboxCleaner;
 import org.jetlinks.community.cs.service.CsInboxRateLimiter;
 import org.jetlinks.community.cs.service.CsInboxService;
 import org.jetlinks.community.cs.service.CsLeadService;
 import org.jetlinks.community.cs.service.CsSessionIdleCloser;
 import org.jetlinks.community.cs.service.CsSessionService;
+import org.jetlinks.community.io.file.FileManager;
 import org.jetlinks.community.notify.NotifierManager;
 import org.jetlinks.core.event.EventBus;
 import org.jetlinks.community.notify.manager.service.NotificationService;
@@ -105,8 +107,14 @@ public class CsManagerConfiguration {
                                              CsAgentService agentService,
                                              ReactiveRepository<CsChatMessageEntity, String> messageRepository,
                                              CsLeadService leadService,
-                                             CsChatEventPublisher publisher) {
-        return new CsSessionService(properties, agentService, messageRepository, leadService, publisher);
+                                             CsChatEventPublisher publisher,
+                                             FileManager fileManager) {
+        return new CsSessionService(properties, agentService, messageRepository, leadService, publisher, fileManager);
+    }
+
+    @Bean
+    public CsFaqService csFaqService() {
+        return new CsFaqService();
     }
 
     @Bean

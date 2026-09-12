@@ -24,6 +24,11 @@ public interface CsConstants {
     String RESOURCE_SESSION = "cs-session";
 
     /**
+     * 常见问题资源权限ID
+     */
+    String RESOURCE_FAQ = "cs-faq";
+
+    /**
      * 站内通知的 topicProvider, 通知中心据此分组
      */
     String NOTIFY_TOPIC_PROVIDER = "cs-inbox";

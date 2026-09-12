@@ -1,7 +1,7 @@
 # customer-service-manager 客服模块
 
 一期 A：官网留言 → 线索归并 → 认领 / 指派 / 跟进 → 转化为租户，新留言通知客服。
-二期：官网在线聊天 + 坐席工作台（自动分配、排队、转接、结束打标签、会话转线索、访客评价）。零侵入挂载，不改上游任何文件。
+二期：官网在线聊天 + 坐席工作台（自动分配、排队、转接、结束打标签、会话转线索、访客评价），消息支持文本 / 图片 / 视频 / 文件，常见问题在官网一键自助、在工作台作常用回复。零侵入挂载，不改上游任何文件。
 
 ## 启用与关闭
 
@@ -36,7 +36,16 @@ customer-service:
     message-max-length: 1000
     history-limit: 200
     heartbeat-interval: 25s          # 访客 SSE 心跳，需小于反向代理的空闲超时
+    image-extensions: [png, jpg, jpeg, gif, webp]   # 附件按扩展名归类，不在列表里的拒绝
+    video-extensions: [mp4, webm, mov]
+    file-extensions: [pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, zip, rar, 7z]
+    image-max-size: 5MB
+    video-max-size: 50MB
+    file-max-size: 20MB
+    faq-limit: 8                     # 官网聊天窗展示的常见问题条数
 ```
+
+附件存到平台文件服务（`file.manager.storage-base-path`），以 `publicAccess` 选项保存，访问地址由 `api.base-path` 拼出，因此部署时 `EXTERNAL_HOST` 必须是浏览器能访问到的地址。
 
 ## 接口
 
@@ -65,7 +74,9 @@ customer-service:
 | `POST /cs/public/session` | 发起会话（可带 `firstMessage`）；有空闲坐席直接分配，否则排队。同 IP 每小时限 20 次 |
 | `GET /cs/public/session/{id}?token=` | 刷新页面后恢复会话 |
 | `GET /cs/public/session/{id}/messages?token=` | 历史消息 |
-| `POST /cs/public/session/{id}/message?token=` | 发送消息，每会话每分钟限 30 条 |
+| `POST /cs/public/session/{id}/message?token=` | 发送文本，每会话每分钟限 30 条 |
+| `POST /cs/public/session/{id}/attachment?token=` | 发送图片 / 视频 / 文件（multipart 字段 `file`），与文本共用频率限制 |
+| `GET /cs/public/faq` `POST /cs/public/faq/{id}/_hit` | 启用中的常见问题、点击计数 |
 | `GET /cs/public/session/{id}/events?token=` | SSE 订阅会话事件（message / accepted / transferred / closed / contact），25s 心跳 |
 | `POST /cs/public/session/{id}/_read` `_contact` `_close` `_rate` | 已读、补充联系方式、结束、评价 |
 
@@ -79,10 +90,11 @@ customer-service:
 | `POST /cs/session/_query` | `cs-session:query` | 会话历史分页 |
 | `GET /cs/session/{id}/messages` | `cs-session:query` | 会话消息 |
 | `POST /cs/session/{id}/_accept` | `cs-session:save` | 接入排队会话 |
-| `POST /cs/session/{id}/message` `_read` | `cs-session:save` | 回复、已读 |
+| `POST /cs/session/{id}/message` `attachment` `_read` | `cs-session:save` | 回复文本、发附件、已读 |
 | `POST /cs/session/{id}/_transfer` | `cs-session:save` | 转给其他在线坐席（本人或主管） |
 | `POST /cs/session/{id}/_close` | `cs-session:save` | 结束并打标签 |
 | `POST /cs/session/{id}/_lead` | `cs-session:save` + `cs-lead:save` | 会话转线索，同一联系方式归入已有线索 |
+| `/cs/faq` 标准 CRUD、`GET /cs/faq/_enabled` | `cs-faq:*` | 常见问题维护；启用中的条目供工作台常用回复 |
 
 坐席工作台实时事件走平台 WebSocket `/messaging/{token}`，订阅 topic `/cs/workbench`：收到 `/cs/agent/{自己}`（分配给自己的会话事件）与 `/cs/queue`（排队变化）两类，消息里的 `topic` 字段可区分。
 
@@ -92,7 +104,7 @@ customer-service:
 
 ## 上线步骤
 
-1. 部署后启动会自动建表（`cs_lead`、`cs_lead_follow`、`cs_inbox_message`、`cs_agent`、`cs_session`、`cs_chat_message`）并创建「客服」「客服主管」角色。
+1. 部署后启动会自动建表（`cs_lead`、`cs_lead_follow`、`cs_inbox_message`、`cs_agent`、`cs_session`、`cs_chat_message`、`cs_faq`）并创建「客服」「客服主管」角色。
 2. 「系统管理 → 菜单管理」导入 `docs/menu-cs.json`（或直接执行 `docs/menu-cs.sql`），再到「角色管理」给两个角色勾选客服菜单与按钮；转化为租户还需要 `tenant:save`。
 3. 把需要接待的用户绑定到客服角色；主管绑定客服主管角色。
 4. 官网 `.env` 配置 `PUBLIC_CS_ENDPOINT` 指向平台 API 地址（浏览器可访问），官网浮窗即可在线聊天与留言。反向代理需允许 SSE（`proxy_buffering off`，读超时大于心跳间隔）。

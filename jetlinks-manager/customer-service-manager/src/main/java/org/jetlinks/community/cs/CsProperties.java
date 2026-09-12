@@ -3,8 +3,12 @@ package org.jetlinks.community.cs;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * 客服模块配置.
@@ -96,6 +100,27 @@ public class CsProperties {
          * 访客 SSE 心跳间隔, 防止反向代理按空闲超时断开
          */
         private Duration heartbeatInterval = Duration.ofSeconds(25);
+
+        /**
+         * 附件按扩展名归类; 不在任何列表里的扩展名拒绝上传
+         */
+        private Set<String> imageExtensions = new LinkedHashSet<>(Arrays.asList("png", "jpg", "jpeg", "gif", "webp"));
+
+        private Set<String> videoExtensions = new LinkedHashSet<>(Arrays.asList("mp4", "webm", "mov"));
+
+        private Set<String> fileExtensions = new LinkedHashSet<>(Arrays.asList(
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "zip", "rar", "7z"));
+
+        private DataSize imageMaxSize = DataSize.ofMegabytes(5);
+
+        private DataSize videoMaxSize = DataSize.ofMegabytes(50);
+
+        private DataSize fileMaxSize = DataSize.ofMegabytes(20);
+
+        /**
+         * 官网聊天窗展示的常见问题条数
+         */
+        private int faqLimit = 8;
     }
 
     @Getter
