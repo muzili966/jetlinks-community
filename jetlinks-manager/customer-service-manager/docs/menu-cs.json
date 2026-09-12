@@ -1,0 +1,121 @@
+[
+  {
+    "code": "cs",
+    "name": "客服中心",
+    "owner": "iot",
+    "i18nMessages": {
+      "name": {
+        "zh_CN": "客服中心",
+        "en_US": "Customer Service",
+        "en": "Customer Service"
+      }
+    },
+    "id": "cs-menu-000000000000000000000001",
+    "url": "/cs",
+    "icon": "icon-tongzhiguanli",
+    "sortIndex": 8,
+    "permissions": [],
+    "children": [
+      {
+        "code": "cs/Inbox",
+        "name": "留言箱",
+        "owner": "iot",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "留言箱",
+            "en_US": "Inbox",
+            "en": "Inbox"
+          }
+        },
+        "id": "cs-menu-000000000000000000000002",
+        "parentId": "cs-menu-000000000000000000000001",
+        "url": "/cs/Inbox",
+        "icon": "icon-tongzhiguanli",
+        "sortIndex": 1,
+        "showPage": ["cs-inbox"],
+        "permissions": [{ "permission": "cs-inbox", "actions": ["query"] }],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "permissions": [{ "permission": "cs-inbox", "actions": ["query"] }]
+          },
+          {
+            "id": "read",
+            "name": "标记已读",
+            "permissions": [{ "permission": "cs-inbox", "actions": ["save"] }]
+          }
+        ]
+      },
+      {
+        "code": "cs/Lead",
+        "name": "线索管理",
+        "owner": "iot",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "线索管理",
+            "en_US": "Leads",
+            "en": "Leads"
+          }
+        },
+        "id": "cs-menu-000000000000000000000003",
+        "parentId": "cs-menu-000000000000000000000001",
+        "url": "/cs/Lead",
+        "icon": "icon-zuzhi",
+        "sortIndex": 2,
+        "showPage": ["cs-lead"],
+        "permissions": [{ "permission": "cs-lead", "actions": ["query"] }],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "permissions": [{ "permission": "cs-lead", "actions": ["query"] }]
+          },
+          {
+            "id": "add",
+            "name": "录入线索",
+            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+          },
+          {
+            "id": "update",
+            "name": "编辑",
+            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+          },
+          {
+            "id": "claim",
+            "name": "认领",
+            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+          },
+          {
+            "id": "assign",
+            "name": "指派",
+            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+          },
+          {
+            "id": "follow",
+            "name": "跟进",
+            "permissions": [{ "permission": "cs-lead", "actions": ["save"] }]
+          },
+          {
+            "id": "convert",
+            "name": "转化为租户",
+            "permissions": [
+              { "permission": "cs-lead", "actions": ["save"] },
+              { "permission": "tenant", "actions": ["save"] }
+            ]
+          },
+          {
+            "id": "export",
+            "name": "导出",
+            "permissions": [{ "permission": "cs-lead", "actions": ["query"] }]
+          },
+          {
+            "id": "delete",
+            "name": "删除",
+            "permissions": [{ "permission": "cs-lead", "actions": ["delete"] }]
+          }
+        ]
+      }
+    ]
+  }
+]

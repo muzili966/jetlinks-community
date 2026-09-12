@@ -19,6 +19,7 @@
         <module>logging-manager</module>
         <module>rule-engine-manager</module>
         <module>tenant-manager</module>
+        <module>customer-service-manager</module>
     </modules>
 
 </project>
