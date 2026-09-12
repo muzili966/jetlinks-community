@@ -36,6 +36,20 @@ class TenantBillingServiceTest {
     }
 
     @Test
+    void refundWindowIs14Days() {
+        long now = System.currentTimeMillis();
+        long day = 24L * 3600 * 1000;
+
+        // 刚支付、第13天：可退
+        assertTrue(!TenantOrderService.isOutOfRefundWindow(now, now));
+        assertTrue(!TenantOrderService.isOutOfRefundWindow(now - 13 * day, now));
+        // 第15天：超窗
+        assertTrue(TenantOrderService.isOutOfRefundWindow(now - 15 * day, now));
+        // 支付时间缺失：按不可退处理，避免无据可查的退款
+        assertTrue(TenantOrderService.isOutOfRefundWindow(null, now));
+    }
+
+    @Test
     void orderRemarkAppend() {
         assertEquals("退款: 客户取消", TenantOrderService.appendRemark(null, "退款: 客户取消"));
         assertEquals("退款: 客户取消", TenantOrderService.appendRemark("  ", "退款: 客户取消"));

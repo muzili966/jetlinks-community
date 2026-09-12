@@ -95,12 +95,60 @@ hdr "3. 平台专属接口对租户用户应 403"
 for path in "/tenant/_query" "/tenant/plan/_query" "/tenant/order/_query" "/tenant/invoice/_query"; do
     CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL$path" \
            -H "X-Access-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"paging":false}')
+    case "$CODE" in
+        403|401)
+            ok "POST $path 已拒绝 ($CODE)"
+            ;;
+        404)
+            # 接口不存在 != 越权。真机踩过：租户模块未加载时全部 404，
+            # 旧逻辑一律判 LEAK，把「模块没起来」误报成「隔离失效」，
+            # 差点让人以为是隔离代码的问题。
+            deny "POST $path 返回 404，接口未注册(模块未加载?) —— 非隔离结论"
+            ;;
+        *)
+            leak "POST $path 未拒绝 (HTTP $CODE) —— 租户可访问平台接口"
+            ;;
+    esac
+done
+
+# ---------- 4. 本轮真机踩坑新增: 用户/日志/角色授权 ----------
+hdr "4. 用户枚举 / 日志越权 / 角色授权越权"
+
+# 用户列表: 不得看到本租户之外的账号(admin 属平台, 不应出现)
+for path in "/user/_query" "/user/detail/_query"; do
+    RESP=$(curl -s -X POST "$BASE_URL$path" -H "X-Access-Token: $TOKEN"            -H 'Content-Type: application/json' -d '{"paging":true,"pageSize":200}')
+    CODE=$(echo "$RESP" | grep -oE '"status":[0-9]+' | head -1 | cut -d: -f2)
     if [ "$CODE" = "403" ]; then
-        ok "POST $path 已拒绝 (403)"
+        deny "POST $path"
+    elif echo "$RESP" | grep -q '"username":"admin"'; then
+        leak "POST $path 可见平台账号 admin —— 用户枚举越权"
     else
-        leak "POST $path 未拒绝 (HTTP $CODE) —— 租户可访问平台接口"
+        ok "POST $path 仅本租户用户"
     fi
 done
+
+# 日志: 只能看到打了本租户标的行(历史无标行与他租户行都不可见)
+for path in "/logger/access/_query" "/logger/system/_query"; do
+    RESP=$(curl -s -X POST "$BASE_URL$path" -H "X-Access-Token: $TOKEN"            -H 'Content-Type: application/json' -d '{"paging":true,"pageSize":200}')
+    FOREIGN=$(echo "$RESP" | grep -oE '"tenantId":"[^"]*"' | grep -v "\"$MY_TENANT\"" | head -3)
+    TOTAL=$(echo "$RESP" | grep -coE '"id":"' )
+    NO_TAG=$(echo "$RESP" | grep -q '"tenantId"' ; echo $?)
+    if [ -n "$FOREIGN" ]; then
+        leak "POST $path 含他租户日志: $FOREIGN"
+    elif [ "$TOTAL" -gt 0 ] && [ "$NO_TAG" != "0" ]; then
+        leak "POST $path 返回 $TOTAL 行但均无 tenantId 标 —— 过滤未生效"
+    else
+        ok "POST $path (可见 $TOTAL 行, 均属本租户)"
+    fi
+done
+
+# 角色菜单授权: 只能操作本租户角色
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/menu/role/platform-admin/_grant/tree" -H "X-Access-Token: $TOKEN")
+if [ "$CODE" = "403" ] || [ "$CODE" = "401" ]; then
+    ok "GET /menu/role/platform-admin/_grant/tree 已拒绝 ($CODE)"
+else
+    leak "GET /menu/role/platform-admin/_grant/tree 未拒绝 (HTTP $CODE) —— 可窥探/篡改平台角色授权"
+fi
 
 # ---------- 汇总 ----------
 printf '\n============================================\n'

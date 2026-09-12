@@ -16,7 +16,19 @@ import org.jetlinks.community.notify.manager.service.NotificationService;
 import org.jetlinks.community.tenant.notice.TenantExpireNotifier;
 import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.tenant.quota.TenantQuotaListener;
+import org.hswebframework.web.system.authorization.api.entity.UserEntity;
+import org.jetlinks.community.auth.entity.MenuEntity;
+import org.jetlinks.community.tenant.interceptor.TenantMenuGrantListener;
+import org.jetlinks.community.tenant.interceptor.TenantMenuScopeListener;
+import org.hswebframework.web.authorization.token.UserTokenManager;
 import org.jetlinks.community.tenant.role.TenantGrantGuard;
+import org.jetlinks.community.tenant.role.TenantUserDetailQueryCustomizer;
+import org.jetlinks.community.tenant.timeseries.TenantTimeSeriesManager;
+import org.jetlinks.community.timeseries.TimeSeriesManager;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+
+import javax.annotation.Nonnull;
 import org.jetlinks.community.tenant.role.TenantRoleInitializer;
 import org.jetlinks.community.tenant.service.TenantInvoiceService;
 import org.jetlinks.community.tenant.service.TenantOrderService;
@@ -24,6 +36,7 @@ import org.jetlinks.community.tenant.web.TenantInvoiceController;
 import org.jetlinks.community.tenant.service.TenantPlanService;
 import org.jetlinks.community.tenant.service.TenantQuotaResolver;
 import org.jetlinks.community.tenant.service.TenantService;
+import org.jetlinks.community.tenant.web.TenantAuthContextFilter;
 import org.jetlinks.community.tenant.web.TenantController;
 import org.jetlinks.community.tenant.web.TenantImpersonationFilter;
 import org.jetlinks.community.tenant.service.TenantBillingService;
@@ -40,6 +53,12 @@ import org.springframework.context.annotation.Primary;
 /**
  * 多租户模块装配: 所有bean都挂在 {@code tenant.enabled=true} 之下,
  * 关闭时系统与单租户版本完全一致(灰度/回滚开关).
+ * <p>
+ * Controller 不在这里注册——它们带 {@code @RestController}(即 {@code @Component})
+ * 会被组件扫描拾取，再在此处 {@code @Bean} 一次就成了双重装配：
+ * {@code tenant.enabled=false} 时本配置类整体失效，但扫描仍会实例化 Controller，
+ * 于是找不到 Service 直接启动失败——回滚开关反而把服务打死了（真机踩过）。
+ * 现改为在各 Controller 上单独标注 {@code @ConditionalOnProperty}，构造参数靠自动注入。
  *
  * @author tenant-manager
  * @since 2.11
@@ -60,8 +79,9 @@ public class TenantManagerConfiguration {
     }
 
     @Bean
-    public TenantService tenantService(DefaultDimensionUserService dimensionUserService) {
-        return new TenantService(dimensionUserService);
+    public TenantService tenantService(DefaultDimensionUserService dimensionUserService,
+                                       ReactiveRepository<UserEntity, String> userRepository) {
+        return new TenantService(dimensionUserService, userRepository);
     }
 
     @Bean
@@ -85,6 +105,35 @@ public class TenantManagerConfiguration {
     @Bean
     public TenantTopicChecker tenantTopicChecker(ProductTenantCache cache, TenantProperties properties) {
         return new TenantTopicChecker(cache, properties);
+    }
+
+    @Bean
+    public TenantMenuScopeListener tenantMenuScopeListener(TenantProperties properties) {
+        return new TenantMenuScopeListener(properties);
+    }
+
+    @Bean
+    public TenantMenuGrantListener tenantMenuGrantListener(TenantProperties properties,
+                                                           ObjectProvider<ReactiveRepository<MenuEntity, String>> menuRepository) {
+        return new TenantMenuGrantListener(properties, menuRepository);
+    }
+
+    /**
+     * 用 BeanPostProcessor 而非 @Primary @Bean 包装 {@link TimeSeriesManager}:
+     * 具体实现类随存储后端而变(TimescaleDB/ES), 按接口注入 delegate 会与自身循环。
+     * static + ObjectProvider 避免过早触发配置绑定。
+     */
+    @Bean
+    public static BeanPostProcessor tenantTimeSeriesManagerWrapper(ObjectProvider<TenantProperties> properties) {
+        return new BeanPostProcessor() {
+            @Override
+            public Object postProcessAfterInitialization(@Nonnull Object bean, @Nonnull String beanName) {
+                if (bean instanceof TimeSeriesManager && !(bean instanceof TenantTimeSeriesManager)) {
+                    return new TenantTimeSeriesManager((TimeSeriesManager) bean, properties.getObject());
+                }
+                return bean;
+            }
+        };
     }
 
     @Bean
@@ -119,6 +168,15 @@ public class TenantManagerConfiguration {
         return new TenantImpersonationFilter();
     }
 
+    /**
+     * 必须先于隔离监听器把认证放进 Reactor Context——监听器只读不解析，
+     * 否则会在认证装配途中反向触发装配（详见该类注释）。
+     */
+    @Bean
+    public TenantAuthContextFilter tenantAuthContextFilter(UserTokenManager userTokenManager) {
+        return new TenantAuthContextFilter(userTokenManager);
+    }
+
     @Bean
     public TenantRoleInitializer tenantRoleInitializer(TenantProperties properties,
                                                        ReactiveRepository<RoleEntity, String> roleRepository) {
@@ -126,30 +184,21 @@ public class TenantManagerConfiguration {
     }
 
     @Bean
-    public TenantGrantGuard tenantGrantGuard(TenantProperties properties) {
-        return new TenantGrantGuard(properties);
+    public TenantGrantGuard tenantGrantGuard(TenantProperties properties,
+                                             ReactiveRepository<RoleEntity, String> roleRepository,
+                                             UserTokenManager userTokenManager) {
+        return new TenantGrantGuard(properties, roleRepository, userTokenManager);
     }
 
     @Bean
-    public TenantController tenantController(TenantService tenantService) {
-        return new TenantController(tenantService);
-    }
-
-    @Bean
-    public TenantPlanController tenantPlanController(TenantPlanService planService) {
-        return new TenantPlanController(planService);
+    public TenantUserDetailQueryCustomizer tenantUserDetailQueryCustomizer(TenantProperties properties) {
+        return new TenantUserDetailQueryCustomizer(properties);
     }
 
     @Bean
     public TenantOrderService tenantOrderService(TenantService tenantService,
                                                  TenantPlanService planService) {
         return new TenantOrderService(tenantService, planService);
-    }
-
-    @Bean
-    public TenantOrderController tenantOrderController(TenantOrderService orderService,
-                                                       TenantBillingService billingService) {
-        return new TenantOrderController(orderService, billingService);
     }
 
     @Bean
@@ -161,24 +210,8 @@ public class TenantManagerConfiguration {
     }
 
     @Bean
-    public MySubscriptionController mySubscriptionController(TenantService tenantService,
-                                                             TenantPlanService planService,
-                                                             TenantOrderService orderService,
-                                                             TenantInvoiceService invoiceService,
-                                                             TenantBillingService billingService,
-                                                             TenantQuotaResolver quotaResolver) {
-        return new MySubscriptionController(tenantService, planService, orderService,
-                                            invoiceService, billingService, quotaResolver);
-    }
-
-    @Bean
     public TenantInvoiceService tenantInvoiceService(TenantOrderService orderService) {
         return new TenantInvoiceService(orderService);
-    }
-
-    @Bean
-    public TenantInvoiceController tenantInvoiceController(TenantInvoiceService invoiceService) {
-        return new TenantInvoiceController(invoiceService);
     }
 
     @Bean

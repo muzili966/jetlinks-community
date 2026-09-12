@@ -38,6 +38,23 @@ public class TenantEventListener implements EventListener, Ordered {
 
     private final TenantProperties properties;
 
+    /**
+     * 认证从哪里来：只认 {@link org.jetlinks.community.tenant.web.TenantAuthContextFilter}
+     * 预先写进 Reactor Context 的那一份，本监听器绝不自己去解析。
+     * <p>
+     * 早先的实现调 {@code Authentication.currentReactive()} 现取，踩了两个坑：
+     * <ol>
+     *     <li>认证缓存为空时它会就地装配认证，而装配又要查角色/组织——那些查询回到本监听器，
+     *         再次触发装配，指数级放大直到 r2dbc 请求队列打满、服务假死；</li>
+     *     <li>加了防重入标记挡住递归之后，装配期<strong>最外层</strong>那次角色查询依然被注入了
+     *         租户条件，把 {@code tenant-user} 这类 tenant_id 为 NULL 的全租户共享角色过滤掉，
+     *         导致 role 维度丢失、租户端菜单全空且所有接口 403。</li>
+     * </ol>
+     * 两个坑同源：<strong>不该在查询拦截器里触发认证装配</strong>。
+     * 改为只读上下文后，装配链路天然读不到认证，也就不会被注入。
+     */
+
+
     @Override
     public String getId() {
         return "tenant-isolation";
@@ -64,14 +81,19 @@ public class TenantEventListener implements EventListener, Ordered {
             apply(type, context, current.get(), Context.empty());
             return;
         }
-        // Reactive 场景: 挂前置 Mono, 从 Reactor Context 取认证与代理租户
+        // Reactive 场景: 只读 Reactor Context 里已解析好的认证, 绝不主动触发装配
         context
             .get(MappingContextKeys.reactiveResultHolder)
             .ifPresent(holder -> holder.before(
-                Mono.deferContextual(ctxView -> Authentication
-                    .currentReactive()
-                    .doOnNext(auth -> apply(type, context, auth, ctxView))
-                    .then())
+                Mono.deferContextual(ctxView -> {
+                    Authentication auth = ctxView.getOrDefault(Authentication.class, null);
+                    if (auth == null) {
+                        // 认证装配链路与系统内部链路(设备上行/定时任务)走这里: 不注入
+                        return Mono.empty();
+                    }
+                    apply(type, context, auth, ctxView);
+                    return Mono.empty();
+                })
             ));
     }
 

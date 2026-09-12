@@ -12,6 +12,7 @@ import org.jetlinks.community.tenant.service.request.TenantSubscribeRequest;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -33,6 +34,9 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
     static final String ORDER_TYPE_RENEW = "renew";
     static final String ORDER_TYPE_CHANGE = "change";
     static final String PAY_CHANNEL_OFFLINE = "offline";
+
+    /** 退款窗口：自支付之日起 14 天内可退，超期需走人工流程 */
+    public static final int REFUND_WINDOW_DAYS = 14;
 
     private final TenantService tenantService;
     private final TenantPlanService planService;
@@ -127,6 +131,10 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
                 if (order.getInvoiceId() != null) {
                     return Mono.error(new BusinessException("error.tenant_order_invoiced_cannot_refund", 400, orderId));
                 }
+                if (isOutOfRefundWindow(order.getPayTime(), System.currentTimeMillis())) {
+                    return Mono.error(new BusinessException(
+                        "error.tenant_order_refund_window_expired", 400, REFUND_WINDOW_DAYS));
+                }
                 return rollbackSubscription(order)
                     .then(createUpdate()
                               .set(TenantOrderEntity::getStatus, TenantOrderStatus.refunded)
@@ -163,6 +171,16 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
                     .execute()
                     .then();
             });
+    }
+
+    /**
+     * 是否已超出退款窗口。支付时间缺失时按不可退处理（宁可拦住，也不放过一笔无据可查的退款）。
+     */
+    public static boolean isOutOfRefundWindow(Long payTime, long now) {
+        if (payTime == null) {
+            return true;
+        }
+        return now - payTime > Duration.ofDays(REFUND_WINDOW_DAYS).toMillis();
     }
 
     static String appendRemark(String origin, String append) {

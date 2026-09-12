@@ -49,13 +49,18 @@ public class TenantRoleInitializer {
     }
 
     private RoleEntity buildAdminRole(TenantEntity tenant) {
-        RoleEntity role = new RoleEntity();
+        // 必须经 repository 的实体工厂创建: new RoleEntity() 拿到的是原始类而非
+        // 租户子类, instanceof TenantAware 恒为 false, tenantId 永远落不上——
+        // 真机现象: 管理员角色无租户归属, 租户端角色列表为空。
+        RoleEntity role = roleRepository.newInstanceNow();
         role.setId(TenantConstants.tenantAdminRoleId(tenant.getId()));
         role.setName("租户管理员");
         role.setDescription("租户[" + tenant.getName() + "]的管理员，可管理本租户用户与角色");
-        // 角色实体已被替换为租户子类，直接写入归属，避免依赖登录态
         if (role instanceof TenantAware) {
             ((TenantAware) role).setTenantId(tenant.getId());
+        } else {
+            log.warn("role entity is not tenant-aware, tenant [{}] admin role has no tenant owner",
+                     tenant.getId());
         }
         return role;
     }

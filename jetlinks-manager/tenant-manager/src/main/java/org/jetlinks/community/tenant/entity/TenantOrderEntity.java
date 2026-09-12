@@ -104,6 +104,18 @@ public class TenantOrderEntity extends GenericEntity<String> implements RecordCr
     @Schema(description = "备注")
     private String remark;
 
+    /**
+     * 是否仍在退款窗口内（非持久化，供前端决定是否展示退款入口）。
+     * 前端自行按 payTime 计算容易与后端口径漂移，故由后端统一给出。
+     */
+    @Schema(description = "是否可退款(14天窗口内、已支付、未开票)", accessMode = Schema.AccessMode.READ_ONLY)
+    public boolean isRefundable() {
+        return status == org.jetlinks.community.tenant.enums.TenantOrderStatus.paid
+            && invoiceId == null
+            && !org.jetlinks.community.tenant.service.TenantOrderService
+                    .isOutOfRefundWindow(payTime, System.currentTimeMillis());
+    }
+
     @Column(updatable = false)
     @Schema(description = "操作人ID(只读)", accessMode = Schema.AccessMode.READ_ONLY)
     private String creatorId;

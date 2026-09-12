@@ -70,4 +70,22 @@ class TenantTopicCheckerTest {
             .create(checker.check("/notifications", TENANT_A))
             .verifyComplete();
     }
+
+    @Test
+    void systemMonitorTopicDenied() {
+        // 首页「综合视图」的 BasicCountCard 会订阅它拿宿主机 CPU/JVM 指标。
+        // 拒绝是对的，但前端必须同步隐藏该卡片，否则租户一进首页就弹「权限不足」
+        // ——真机踩过。前端保护见 ComprehensiveHome/DevOpsHome 的 isTenantUser 判断。
+        StepVerifier
+            .create(checker.check("/dashboard/systemMonitor/stats/info/realTime", TENANT_A))
+            .verifyError(AccessDenyException.class);
+    }
+
+    @Test
+    void deviceDashboardTopicStillAllowed() {
+        // 设备维度仪表盘按 productId 校验归属，不能被上面那条规则误伤
+        StepVerifier
+            .create(checker.check("/dashboard/device/" + OWNED_PRODUCT + "/property/realTime", TENANT_A))
+            .verifyComplete();
+    }
 }

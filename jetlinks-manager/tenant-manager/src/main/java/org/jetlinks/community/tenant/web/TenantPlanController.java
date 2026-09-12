@@ -13,6 +13,7 @@ import org.hswebframework.web.crud.web.reactive.ReactiveServiceCrudController;
 import org.jetlinks.community.tenant.entity.TenantPlanEntity;
 import org.jetlinks.community.tenant.enums.TenantState;
 import org.jetlinks.community.tenant.service.TenantPlanService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +25,7 @@ import reactor.core.publisher.Flux;
  * @author tenant-manager
  * @since 2.11
  */
+@ConditionalOnProperty(prefix = "tenant", name = "enabled", havingValue = "true")
 @RestController
 @RequestMapping("/tenant/plan")
 @Authorize

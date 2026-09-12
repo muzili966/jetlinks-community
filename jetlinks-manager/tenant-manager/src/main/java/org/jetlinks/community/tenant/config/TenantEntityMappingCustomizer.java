@@ -9,6 +9,7 @@ import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.auth.entity.RoleGroupEntity;
 import org.jetlinks.community.auth.entity.ThirdPartyUserBindEntity;
 import org.jetlinks.community.auth.entity.UserDetailEntity;
+import org.hswebframework.web.system.authorization.api.entity.UserEntity;
 import org.jetlinks.community.device.entity.DeviceInstanceEntity;
 import org.jetlinks.community.device.entity.DeviceMetadataMappingEntity;
 import org.jetlinks.community.device.entity.DeviceProductEntity;
@@ -67,6 +68,8 @@ public class TenantEntityMappingCustomizer implements EntityMappingCustomizer {
         map(factory, RoleEntity.class, TenantRoleEntity.class);
         map(factory, RoleGroupEntity.class, TenantRoleGroupEntity.class);
         map(factory, UserDetailEntity.class, TenantUserDetailEntity.class);
+        // s_user: 防止租户管理员经 /user/_query 枚举全平台账号
+        map(factory, UserEntity.class, TenantUserEntity.class);
         map(factory, ThirdPartyUserBindEntity.class, TenantThirdPartyUserBindEntity.class);
         // 菜单表不做租户隔离（平台与租户共用同一套定义），
         // 但替换为带 scope 字段的子类，用于区分平台专属菜单与租户菜单

@@ -15,6 +15,7 @@
  */
 package org.jetlinks.community.logging.access;
 
+import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.logging.events.AccessLoggerAfterEvent;
 import org.jetlinks.core.utils.TopicUtils;
 import org.jetlinks.community.logging.configuration.LoggingProperties;
@@ -44,7 +45,26 @@ public class AccessLoggingTranslator {
         }
         SerializableAccessLog log = SerializableAccessLog.of(event.getLogger());
 
-        eventPublisher.publishEvent(log);
+        // 在请求上下文里解析发起者与租户后再发布。
+        // aop 侧以 publish(eventPublisher).contextWrite(请求上下文).subscribe() 订阅本事件的
+        // async 链，因此这里的 currentReactive() 能拿到登录人；直接 publishEvent 则拿不到——
+        // 真机现象: 日志 creatorId 全空, 租户过滤无从下手。
+        event.async(
+            Authentication
+                .currentReactive()
+                .doOnNext(auth -> {
+                    log.setCreatorId(auth.getUser().getId());
+                    auth.getDimensions()
+                        .stream()
+                        // "tenant" 为租户维度类型ID(tenant-manager 定义);
+                        // 此处用字面量避免组件反向依赖 manager 模块
+                        .filter(d -> d.getType() != null && "tenant".equals(d.getType().getId()))
+                        .findFirst()
+                        .ifPresent(d -> log.setTenantId(d.getId()));
+                })
+                // 匿名请求无认证, then 仍会执行发布
+                .then(Mono.fromRunnable(() -> eventPublisher.publishEvent(log)))
+        );
     }
 
 

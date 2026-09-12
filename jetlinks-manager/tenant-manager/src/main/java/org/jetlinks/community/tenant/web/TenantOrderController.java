@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.hswebframework.reactor.excel.ReactorExcel;
+import org.hswebframework.reactor.excel.WriterOperator;
 import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.hswebframework.web.authorization.annotation.Authorize;
 import org.hswebframework.web.authorization.annotation.QueryAction;
@@ -20,6 +21,7 @@ import org.jetlinks.community.tenant.service.request.TenantSubscribeRequest;
 import org.jetlinks.community.tenant.web.response.BillingSummary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,6 +46,7 @@ import java.util.Map;
  * @author tenant-manager
  * @since 2.11
  */
+@ConditionalOnProperty(prefix = "tenant", name = "enabled", havingValue = "true")
 @RestController
 @RequestMapping("/tenant/order")
 @Authorize
@@ -94,7 +97,7 @@ public class TenantOrderController implements ReactiveServiceQueryController<Ten
         response.getHeaders().set(HttpHeaders.CONTENT_DISPOSITION,
             "attachment; filename=" + URLEncoder.encode("tenant-orders." + format, StandardCharsets.UTF_8));
         query.setPaging(false);
-        return ReactorExcel
+        WriterOperator<TenantOrderEntity> writer = ReactorExcel
             .<TenantOrderEntity>writer(format)
             .header("id", "订单号")
             .header("tenantName", "租户")
@@ -108,10 +111,12 @@ public class TenantOrderController implements ReactiveServiceQueryController<Ten
             .header("expireTimeAfter", "生效后到期")
             .header("createTime", "下单时间")
             .header("remark", "备注")
-            .converter(this::toExportRow)
-            .writeBuffer(service.query(query), 512)
-            .map(response.bufferFactory()::wrap)
-            .as(response::writeWith);
+            .converter(this::toExportRow);
+        // 不用库的 writeBuffer：它按引用发射可复用缓冲区，导出会损坏/错行
+        return ExcelExportSupport
+            .writeAll(writer, service.query(query))
+            .flatMap(bytes -> response.writeWith(
+                Mono.just(response.bufferFactory().wrap(bytes))));
     }
 
     private Map<String, Object> toExportRow(TenantOrderEntity order) {

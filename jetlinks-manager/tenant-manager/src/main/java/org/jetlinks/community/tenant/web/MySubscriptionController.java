@@ -7,6 +7,7 @@ import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.authorization.annotation.Authorize;
+import org.hswebframework.web.authorization.exception.AccessDenyException;
 import org.hswebframework.web.exception.NotFoundException;
 import org.jetlinks.community.tenant.TenantConstants;
 import org.jetlinks.community.tenant.TenantPlanConstants;
@@ -17,11 +18,24 @@ import org.jetlinks.community.tenant.entity.TenantPlanEntity;
 import org.jetlinks.community.tenant.service.*;
 import org.jetlinks.community.tenant.service.request.TenantInvoiceApplyRequest;
 import org.jetlinks.community.tenant.web.response.BillingSummary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import io.swagger.v3.oas.annotations.Parameter;
+import org.hswebframework.reactor.excel.ReactorExcel;
+import org.hswebframework.reactor.excel.WriterOperator;
+import org.jetlinks.community.tenant.entity.TenantOrderEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import jakarta.validation.Valid;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -35,6 +49,7 @@ import java.util.Map;
  * @author tenant-manager
  * @since 2.11
  */
+@ConditionalOnProperty(prefix = "tenant", name = "enabled", havingValue = "true")
 @RestController
 @RequestMapping("/my/subscription")
 @Authorize
@@ -118,8 +133,89 @@ public class MySubscriptionController {
     @Authorize(merge = false)
     @Operation(summary = "申请开票(仅能针对自己租户的订单)")
     public Mono<TenantInvoiceEntity> applyInvoice(@RequestBody @Valid Mono<TenantInvoiceApplyRequest> request) {
-        // 订单归属校验在 TenantInvoiceService.apply 内完成（同租户 + 已支付 + 未开票）
-        return request.flatMap(invoiceService::apply);
+        // service.apply 内校验「同租户 + 已支付 + 未开票」，但它只保证多笔订单属于同一租户，
+        // 至于是不是「本人的」租户，靠行级隔离让 findById 查不到别人的订单来兜。
+        // 自助入口不依赖那一层：先把租户ID从登录态取出来显式比对，隔离万一失效也不会越权开票。
+        return Mono
+            .zip(currentTenantId(), request)
+            .flatMap(tp -> assertOwnOrders(tp.getT1(), tp.getT2())
+                .then(invoiceService.apply(tp.getT2())));
+    }
+
+    private Mono<Void> assertOwnOrders(String tenantId, TenantInvoiceApplyRequest request) {
+        return orderService
+            .findById(request.getOrderIdList())
+            .filter(order -> !tenantId.equals(order.getTenantId()))
+            .next()
+            .flatMap(foreign -> Mono.<Void>error(new AccessDenyException()))
+            .then();
+    }
+
+    @GetMapping("/orders/export.{format}")
+    @Authorize(merge = false)
+    @Operation(summary = "导出我的订单(xlsx/csv)")
+    public Mono<Void> exportMyOrders(ServerHttpResponse response,
+                                     @PathVariable @Parameter(description = "文件格式: xlsx 或 csv") String format,
+                                     @Parameter(hidden = true) QueryParamEntity query) {
+        response.getHeaders().set(HttpHeaders.CONTENT_DISPOSITION,
+            "attachment; filename=" + URLEncoder.encode("my-orders." + format, StandardCharsets.UTF_8));
+        query.setPaging(false);
+        // 租户ID 只从登录态取，不接受任何客户端入参，避免改 query 就导出别人的账单
+        return currentTenantId()
+            .flatMap(tenantId -> {
+                query.and(TenantConstants.TENANT_ID_PROPERTY, "eq", tenantId);
+                WriterOperator<TenantOrderEntity> writer = ReactorExcel
+                    .<TenantOrderEntity>writer(format)
+                    .header("id", "订单号")
+                    .header("planName", "套餐")
+                    .header("months", "月数")
+                    .header("totalAmount", "金额(元)")
+                    .header("orderType", "类型")
+                    .header("status", "状态")
+                    .header("payChannel", "支付渠道")
+                    .header("invoiceState", "开票状态")
+                    .header("expireTimeAfter", "生效后到期")
+                    .header("createTime", "下单时间")
+                    .header("remark", "备注")
+                    .converter(MySubscriptionController::toExportRow);
+                // 不用库的 writeBuffer：它按引用发射可复用缓冲区，导出会损坏/错行
+                return ExcelExportSupport
+                    .writeAll(writer, orderService.query(query))
+                    .flatMap(bytes -> response.writeWith(
+                        Mono.just(response.bufferFactory().wrap(bytes))));
+            });
+    }
+
+    /** 不含租户名/租户ID：租户导出自己的账单，这两列是冗余信息 */
+    private static Map<String, Object> toExportRow(TenantOrderEntity order) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", order.getId());
+        row.put("planName", order.getPlanName());
+        row.put("months", order.getMonths());
+        row.put("totalAmount", order.getTotalAmount());
+        row.put("orderType", ORDER_TYPE_TEXT.getOrDefault(order.getOrderType(), order.getOrderType()));
+        row.put("status", order.getStatus() == null ? "" : order.getStatus().getText());
+        row.put("payChannel", order.getPayChannel());
+        row.put("invoiceState", order.getInvoiceId() == null ? "未开票" : "已开票");
+        row.put("expireTimeAfter", formatTime(order.getExpireTimeAfter()));
+        row.put("createTime", formatTime(order.getCreateTime()));
+        row.put("remark", order.getRemark());
+        return row;
+    }
+
+    private static final Map<String, String> ORDER_TYPE_TEXT = Map.of(
+        "subscribe", "首次开通",
+        "renew", "续费",
+        "change", "变更套餐");
+
+    private static final DateTimeFormatter EXPORT_TIME_FORMAT =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private static String formatTime(Long time) {
+        if (time == null) {
+            return "";
+        }
+        return EXPORT_TIME_FORMAT.format(Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()));
     }
 
     @GetMapping("/plans")

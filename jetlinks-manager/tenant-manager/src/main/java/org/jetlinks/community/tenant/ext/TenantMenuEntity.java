@@ -32,6 +32,13 @@ public class TenantMenuEntity extends MenuEntity {
      * <ul>
      *     <li>{@code tenant}（默认）：租户功能，平台与租户均可见</li>
      *     <li>{@code platform}：平台专属，仅平台管理员可授权与访问</li>
+     *     <li>{@code tenant-only}：租户专属，平台管理员不展示</li>
+     * </ul>
+     * <p>
+     * 本字段易被无意覆盖（表单不含该字段 + {@code @DefaultValue} + 全量同步先删后建），
+     * 因此 platform / tenant-only 两类由 {@code TenantMenuScopeListener} 按代码清单
+     * 强制回填，不依赖库里存的值。
+     * <ul>
      * </ul>
      */
     @Column(length = 16)
@@ -45,4 +52,6 @@ public class TenantMenuEntity extends MenuEntity {
 
     public static final String SCOPE_PLATFORM = "platform";
     public static final String SCOPE_TENANT = "tenant";
+    /** 租户专属：平台管理员不展示（平台账号点进去后端会 404） */
+    public static final String SCOPE_TENANT_ONLY = "tenant-only";
 }

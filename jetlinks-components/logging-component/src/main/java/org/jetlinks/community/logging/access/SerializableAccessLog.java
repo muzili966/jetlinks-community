@@ -140,6 +140,14 @@ public class SerializableAccessLog implements Serializable {
 
     private String creatorId;
 
+    /**
+     * 请求发起者所属租户。写入时由 {@link AccessLoggingTranslator} 从认证信息解析；
+     * 平台管理员与匿名请求为空。查询侧的租户过滤依赖此字段
+     * (见 tenant-manager 的 TimeSeriesManager 装饰器)。
+     */
+    @Schema(description = "租户ID(平台/匿名请求为空)")
+    private String tenantId;
+
     private String ipRegion;
 
     public static SerializableAccessLog of(AccessLoggerInfo info) {

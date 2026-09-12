@@ -91,6 +91,9 @@ public class TimeSeriesAccessLoggerService implements AccessLoggerService, Smart
 
                     of("bindings", "绑定信息", new ArrayType().elementType(StringType.GLOBAL)),
                     of("creatorId", "创建人", StringType.GLOBAL),
+                    // 租户隔离依赖此列(见 AccessLoggingTranslator 写入与 tenant-manager 查询过滤);
+                    // 不注册的话表上没有该列, ezorm 会静默丢弃过滤条件
+                    of("tenantId", "租户ID", StringType.GLOBAL),
                     of("spanId", "链路跨度ID", StringType.GLOBAL),
                     of("traceId", "链路ID", StringType.GLOBAL),
                     of("context", "上下文", new ObjectType()

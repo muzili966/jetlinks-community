@@ -80,6 +80,10 @@ public class UserDetailService extends GenericReactiveCrudService<UserDetailEnti
 
     private final ThingsRegistry registry;
 
+    /** 详情查询的追加约束(如租户隔离), 可为空; 见 {@link UserDetailQueryCustomizer} */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private List<UserDetailQueryCustomizer> queryCustomizers = Collections.emptyList();
+
     public UserDetailService(ReactiveUserService userService,
                              RoleService roleService,
                              OrganizationService organizationService,
@@ -153,6 +157,18 @@ public class UserDetailService extends GenericReactiveCrudService<UserDetailEnti
     }
 
     public Mono<PagerResult<UserDetail>> queryUserDetail(QueryParamEntity query) {
+        return applyCustomizers(query).flatMap(this::doQueryUserDetail);
+    }
+
+    private Mono<QueryParamEntity> applyCustomizers(QueryParamEntity query) {
+        Mono<QueryParamEntity> result = Mono.just(query);
+        for (UserDetailQueryCustomizer customizer : queryCustomizers) {
+            result = result.flatMap(customizer::customize);
+        }
+        return result;
+    }
+
+    private Mono<PagerResult<UserDetail>> doQueryUserDetail(QueryParamEntity query) {
         return QueryHelper
             .transformPageResult(
                 queryHelper

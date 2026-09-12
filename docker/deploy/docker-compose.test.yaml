@@ -3,6 +3,7 @@
 # 端口规划：与 wxxpay 完全错开（wxxpay 占用 3000-3102 / 8000-8108 / 10091-10107）
 #   8848       平台 API（JetLinks 默认端口）
 #   3200       管理前端
+#   3310       官网（tianma-website，纯静态）
 #   1883-1890  MQTT 设备接入（预留区间，在平台"网络组件"中分配）
 #   8800-8810  TCP/HTTP 设备接入（预留区间）
 #
@@ -68,4 +69,14 @@ services:
             - TZ=Asia/Shanghai
             # 前端 Nginx 反代后端的地址（容器内走服务名，末尾斜杠不能省）
             - API_BASE_PATH=http://jetlinks-api:8848/
+        restart: unless-stopped
+
+    # 官网：独立仓库 tianma-website，纯静态站，不依赖 API
+    tianma-website:
+        image: ${REGISTRY}/tianma-website:${TAG:-latest}
+        container_name: tianma-website
+        ports:
+            - "3310:80"
+        environment:
+            - TZ=Asia/Shanghai
         restart: unless-stopped
