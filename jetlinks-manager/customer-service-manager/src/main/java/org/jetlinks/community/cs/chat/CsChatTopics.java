@@ -18,6 +18,8 @@ public final class CsChatTopics {
     public static final String QUEUE = "/cs/queue";
     /** 坐席工作台通过 WebSocket 订阅的入口主题 */
     public static final String WORKBENCH = "/cs/workbench";
+    /** 控制台用户订阅自己会话的入口主题, 订阅参数带 sessionId */
+    public static final String MY_SESSION = "/cs/my-session";
 
     private CsChatTopics() {
     }

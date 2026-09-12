@@ -16,6 +16,7 @@ import org.jetlinks.community.cs.chat.CsAttachmentPolicy;
 import org.jetlinks.community.cs.chat.CsChatEventPublisher;
 import org.jetlinks.community.cs.chat.CsSessionEvent;
 import org.jetlinks.community.cs.chat.CsSessionStateMachine;
+import org.jetlinks.community.cs.chat.CsSupportIdentity;
 import org.jetlinks.community.cs.chat.CsSessionView;
 import org.jetlinks.community.cs.entity.CsAgentEntity;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
@@ -28,6 +29,7 @@ import org.jetlinks.community.cs.service.request.CsSessionContactRequest;
 import org.jetlinks.community.cs.service.request.CsSessionLeadRequest;
 import org.jetlinks.community.cs.service.request.CsSessionOpenRequest;
 import org.jetlinks.community.cs.service.request.CsSessionRateRequest;
+import org.jetlinks.community.cs.service.request.CsSupportOpenRequest;
 import org.jetlinks.community.cs.web.ClientInfo;
 import org.jetlinks.community.io.file.FileInfo;
 import org.jetlinks.community.io.file.FileManager;
@@ -109,7 +111,12 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
         if (!request.hasFirstMessage()) {
             return Mono.empty();
         }
-        CsChatMessageEntity message = buildMessage(session, CsChatSender.visitor, request.getFirstMessage().strip(), now);
+        return appendMessage(session, CsChatSender.visitor, request.getFirstMessage().strip(), now);
+    }
+
+    /** 会话刚建好时写入首条消息: 此时还没有订阅者, 不发事件 */
+    private Mono<Void> appendMessage(CsSessionEntity session, CsChatSender sender, String content, long now) {
+        CsChatMessageEntity message = buildMessage(session, sender, content, now);
         applyMessage(session, message);
         return messageRepository.insert(message).then(persistCounters(session));
     }
@@ -191,6 +198,115 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
         return findRequired(sessionId)
             .filter(session -> session.hasToken(token))
             .switchIfEmpty(Mono.error(() -> new BusinessException("error.cs_session_token_invalid", 403)));
+    }
+
+    // ---------- 控制台(已登录用户)侧 ----------
+
+    /**
+     * 控制台用户发起会话: 已有进行中的会话就直接复用, 避免同一个人开出一堆并行会话占着坐席额度.
+     */
+    @Transactional
+    public Mono<CsSessionView> openForUser(CsSupportIdentity identity, CsSupportOpenRequest request, ClientInfo client) {
+        return findOpenForUser(identity.getUserId())
+            .flatMap(exists -> agentService
+                .hasOnline()
+                .map(online -> CsSessionView.of(exists).withAgentsOnline(online)))
+            .switchIfEmpty(Mono.defer(() -> createForUser(identity, request, client)));
+    }
+
+    private Mono<CsSessionView> createForUser(CsSupportIdentity identity, CsSupportOpenRequest request, ClientInfo client) {
+        long now = System.currentTimeMillis();
+        CsSessionEntity session = buildUserSession(identity, request, client, now);
+        return pickAgent()
+            .map(agent -> assignTo(session, agent, now))
+            .defaultIfEmpty(session)
+            .flatMap(this::insert)
+            .then(Mono.defer(() -> request.hasFirstMessage()
+                ? appendMessage(session, CsChatSender.visitor, request.getFirstMessage().strip(), now)
+                : Mono.empty()))
+            .then(Mono.defer(() -> announceOpened(session)))
+            .then(agentService.hasOnline())
+            .map(online -> CsSessionView.of(session).withAgentsOnline(online));
+    }
+
+    static CsSessionEntity buildUserSession(CsSupportIdentity identity,
+                                            CsSupportOpenRequest request,
+                                            ClientInfo client,
+                                            long now) {
+        CsSessionOpenRequest open = new CsSessionOpenRequest();
+        open.setVisitorId(identity.getUserId());
+        open.setVisitorName(identity.getUserName());
+        open.setVisitorContact(identity.getTelephone());
+        open.setSourcePage(request.getSourcePage());
+        CsSessionEntity session = buildSession(open, client, now);
+        session.setUserId(identity.getUserId());
+        session.setTenantId(identity.getTenantId());
+        session.setTenantName(identity.getTenantName());
+        return session;
+    }
+
+    /** 我当前进行中的会话(排队或接待中), 用于控制台每次进来自动接上 */
+    public Mono<CsSessionEntity> findOpenForUser(String userId) {
+        return createQuery()
+            .where()
+            .is(CsSessionEntity::getUserId, userId)
+            .in(CsSessionEntity::getState, Arrays.asList(CsSessionState.queued, CsSessionState.active))
+            .orderBy(SortOrder.desc(CsSessionEntity::getCreateTime))
+            .fetchOne();
+    }
+
+    /** 我最近的会话, 按时间倒序; 控制台用它加载历史对话 */
+    public Flux<CsSessionEntity> recentForUser(String userId, int limit) {
+        return createQuery()
+            .where(CsSessionEntity::getUserId, userId)
+            .orderBy(SortOrder.desc(CsSessionEntity::getCreateTime))
+            .paging(0, limit)
+            .fetch();
+    }
+
+    public Mono<CsSessionEntity> findForUser(String sessionId, String userId) {
+        return findRequired(sessionId)
+            .filter(session -> session.isOwnedBy(userId))
+            .switchIfEmpty(Mono.error(() -> new BusinessException("error.cs_session_not_yours", 403)));
+    }
+
+    @Transactional
+    public Mono<CsChatMessageEntity> userMessage(String sessionId, String userId, String content) {
+        return findForUser(sessionId, userId)
+            .flatMap(session -> send(session, CsChatSender.visitor, content));
+    }
+
+    @Transactional
+    public Mono<CsChatMessageEntity> userAttachment(String sessionId, String userId, FilePart file) {
+        return findForUser(sessionId, userId)
+            .flatMap(session -> sendAttachment(session, CsChatSender.visitor, file));
+    }
+
+    @Transactional
+    public Mono<Void> userRead(String sessionId, String userId) {
+        return findForUser(sessionId, userId)
+            .flatMap(session -> createUpdate()
+                .set(CsSessionEntity::getVisitorUnread, 0)
+                .where(CsSessionEntity::getId, sessionId)
+                .execute())
+            .then();
+    }
+
+    @Transactional
+    public Mono<Void> userClose(String sessionId, String userId) {
+        return findForUser(sessionId, userId)
+            .flatMap(session -> close(session, CLOSED_BY_VISITOR, null));
+    }
+
+    @Transactional
+    public Mono<Void> userRate(String sessionId, String userId, CsSessionRateRequest request) {
+        return findForUser(sessionId, userId)
+            .flatMap(session -> createUpdate()
+                .set(CsSessionEntity::getRating, request.getRating())
+                .set(CsSessionEntity::getRatingComment, request.getComment())
+                .where(CsSessionEntity::getId, sessionId)
+                .execute())
+            .then();
     }
 
     // ---------- 坐席侧 ----------

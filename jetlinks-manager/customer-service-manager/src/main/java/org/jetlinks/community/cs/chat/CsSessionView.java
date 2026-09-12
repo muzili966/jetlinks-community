@@ -34,6 +34,9 @@ public class CsSessionView {
     @Schema(description = "访客联系方式")
     private String visitorContact;
 
+    @Schema(description = "所属租户名称")
+    private String tenantName;
+
     @Schema(description = "访客称呼")
     private String visitorName;
 
@@ -63,6 +66,7 @@ public class CsSessionView {
         view.setAgentName(entity.getAgentName());
         view.setVisitorName(entity.getVisitorName());
         view.setVisitorContact(entity.getVisitorContact());
+        view.setTenantName(entity.getTenantName());
         view.setVisitorUnread(entity.getVisitorUnread());
         view.setAgentUnread(entity.getAgentUnread());
         view.setLastMessage(entity.getLastMessage());

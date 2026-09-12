@@ -31,6 +31,7 @@ import java.util.Map;
 @Setter
 @Table(name = "cs_session", indexes = {
     @Index(name = "idx_cs_session_visitor", columnList = "visitor_id"),
+    @Index(name = "idx_cs_session_user", columnList = "user_id"),
     @Index(name = "idx_cs_session_state", columnList = "state"),
     @Index(name = "idx_cs_session_agent", columnList = "agent_id"),
     @Index(name = "idx_cs_session_last_message", columnList = "last_message_at")
@@ -47,8 +48,20 @@ public class CsSessionEntity extends GenericEntity<String> {
     }
 
     @Column(name = "visitor_id", length = 64, updatable = false)
-    @Schema(description = "访客ID(浏览器本地生成)")
+    @Schema(description = "访客ID(官网浏览器本地生成; 控制台会话为登录用户ID)")
     private String visitorId;
+
+    @Column(name = "user_id", length = 64, updatable = false)
+    @Schema(description = "发起会话的登录用户ID; 官网匿名访客为空")
+    private String userId;
+
+    @Column(name = "tenant_id", length = 64, updatable = false)
+    @Schema(description = "发起人所属租户ID")
+    private String tenantId;
+
+    @Column(name = "tenant_name", length = 128, updatable = false)
+    @Schema(description = "发起人所属租户名称(快照)")
+    private String tenantName;
 
     @Column(name = "visitor_token", length = 64, updatable = false)
     @Schema(description = "访客凭证, 只在创建会话时返回一次", hidden = true)
@@ -161,8 +174,13 @@ public class CsSessionEntity extends GenericEntity<String> {
         return state == CsSessionState.closed;
     }
 
-    public boolean isHandledBy(String userId) {
-        return userId != null && userId.equals(agentId);
+    public boolean isHandledBy(String agentUserId) {
+        return agentUserId != null && agentUserId.equals(agentId);
+    }
+
+    /** 控制台会话的归属判定: 只有本人能读写自己的会话 */
+    public boolean isOwnedBy(String loginUserId) {
+        return loginUserId != null && loginUserId.equals(userId);
     }
 
     public boolean hasToken(String token) {

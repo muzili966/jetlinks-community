@@ -7,6 +7,7 @@ import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.cs.CsProperties;
 import org.jetlinks.community.cs.chat.CsChatEventPublisher;
 import org.jetlinks.community.cs.chat.CsVisitorEventStream;
+import org.jetlinks.community.cs.chat.CsMySessionSubscriptionProvider;
 import org.jetlinks.community.cs.chat.CsWorkbenchSubscriptionProvider;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
 import org.jetlinks.community.cs.entity.CsLeadFollowEntity;
@@ -130,6 +131,11 @@ public class CsManagerConfiguration {
     @Bean
     public CsWorkbenchSubscriptionProvider csWorkbenchSubscriptionProvider(EventBus eventBus) {
         return new CsWorkbenchSubscriptionProvider(eventBus);
+    }
+
+    @Bean
+    public CsMySessionSubscriptionProvider csMySessionSubscriptionProvider(EventBus eventBus, CsSessionService sessionService) {
+        return new CsMySessionSubscriptionProvider(eventBus, sessionService);
     }
 
     @Bean

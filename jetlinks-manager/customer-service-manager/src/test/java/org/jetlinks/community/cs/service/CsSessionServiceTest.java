@@ -7,7 +7,9 @@ import org.jetlinks.community.cs.enums.CsChatMessageType;
 import org.jetlinks.community.cs.enums.CsChatSender;
 import org.jetlinks.community.io.file.FileInfo;
 import org.jetlinks.community.cs.enums.CsSessionState;
+import org.jetlinks.community.cs.chat.CsSupportIdentity;
 import org.jetlinks.community.cs.service.request.CsSessionOpenRequest;
+import org.jetlinks.community.cs.service.request.CsSupportOpenRequest;
 import org.jetlinks.community.cs.web.ClientInfo;
 import org.junit.jupiter.api.Test;
 
@@ -15,6 +17,7 @@ import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,6 +111,36 @@ class CsSessionServiceTest {
         CsChatMessageEntity text = CsSessionService.buildMessage(session, CsChatSender.agent, "好的", NOW + 1);
         assertEquals(CsChatMessageType.text, text.getType());
         assertEquals("好的", CsSessionService.summaryOf(text));
+    }
+
+    @Test
+    void consoleSessionRegistersUserAndTenantAutomatically() {
+        CsSupportIdentity who = CsSupportIdentity
+            .of("u1", "张三")
+            .withTelephone("13800138000")
+            .withTenant("t1", "天马科技");
+        CsSupportOpenRequest request = new CsSupportOpenRequest();
+        request.setSourcePage("/device/Instance");
+
+        CsSessionEntity session = CsSessionService.buildUserSession(who, request, new ClientInfo("10.0.0.2", "ua"), NOW);
+        assertEquals("u1", session.getUserId());
+        assertEquals("u1", session.getVisitorId(), "控制台会话用登录用户ID当访客ID, 同一个人跨设备也能接上");
+        assertEquals("张三", session.getVisitorName());
+        assertEquals("13800138000", session.getVisitorContact());
+        assertEquals("t1", session.getTenantId());
+        assertEquals("天马科技", session.getTenantName());
+        assertEquals("/device/Instance", session.getSourcePage());
+        assertEquals(CsSessionState.queued, session.getState());
+        assertTrue(session.isOwnedBy("u1"));
+        assertFalse(session.isOwnedBy("u2"));
+    }
+
+    @Test
+    void anonymousSessionHasNoOwner() {
+        CsSessionEntity session = session();
+        assertNull(session.getUserId());
+        assertFalse(session.isOwnedBy("u1"));
+        assertFalse(session.isOwnedBy(null));
     }
 
     @Test
