@@ -17,6 +17,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Objects;
+import org.hswebframework.ezorm.rdb.mapping.ReactiveUpdate;
+import org.hswebframework.web.id.IDGenerator;
+import reactor.util.retry.Retry;
 
 /**
  * 套餐订阅计费: 开通/续费生成订单流水并顺延订阅到期时间.
@@ -183,6 +186,127 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
         return now - payTime > Duration.ofDays(REFUND_WINDOW_DAYS).toMillis();
     }
 
+    // ---------- 在线支付 ----------
+
+    /** 顺延到期时间时乐观更新冲突的最大重试次数 */
+    static final int EXPIRE_UPDATE_RETRIES = 3;
+
+    /**
+     * 在线支付下单: 生成待支付订单, 不改租户订阅; 到账后由 {@link #fulfill} 顺延到期时间.
+     * 免费套餐不需要付款, 直接拒绝.
+     */
+    @Transactional
+    public Mono<TenantOrderEntity> createPending(TenantSubscribeRequest request) {
+        return Mono
+            .zip(findTenant(request.getTenantId()), findPlan(request.getPlanId()))
+            .flatMap(tp -> {
+                if (isFreePlan(tp.getT2())) {
+                    return Mono.error(new BusinessException("error.tenant_plan_free_no_payment", 400, tp.getT2().getId()));
+                }
+                TenantOrderEntity order = buildPendingOrder(tp.getT1(), tp.getT2(), request);
+                return insert(order).thenReturn(order);
+            });
+    }
+
+    static boolean isFreePlan(TenantPlanEntity plan) {
+        return plan.getMonthlyPrice() == null || plan.getMonthlyPrice() == 0;
+    }
+
+    /**
+     * 先生成订单号: 支付单要用它做业务单号. 支付渠道到账时才确定, 这里留空.
+     */
+    static TenantOrderEntity buildPendingOrder(TenantEntity tenant, TenantPlanEntity plan, TenantSubscribeRequest request) {
+        TenantOrderEntity order = new TenantOrderEntity();
+        order.setId(IDGenerator.SNOW_FLAKE_STRING.generate());
+        order.setTenantId(tenant.getId());
+        order.setTenantName(tenant.getName());
+        order.setPlanId(plan.getId());
+        order.setPlanName(plan.getName());
+        order.setMonthlyPrice(plan.getMonthlyPrice());
+        order.setMonths(request.getMonths());
+        order.setTotalAmount(computeAmount(plan.getMonthlyPrice(), request.getMonths()));
+        order.setOrderType(resolveOrderType(tenant.getPlanId(), plan.getId()));
+        order.setStatus(TenantOrderStatus.pending);
+        order.setRemark(request.getRemark());
+        return order;
+    }
+
+    /**
+     * 到账履约, 幂等: 已支付直接返回; 只有待支付的订单会顺延订阅并置为已支付.
+     * 支付核心已保证同一张支付单只回调一次, 这里仍按状态判断, 防人工重复调用.
+     */
+    @Transactional
+    public Mono<Void> fulfill(String orderId, String payChannel, long paidAt) {
+        return findById(orderId)
+            .switchIfEmpty(Mono.error(() -> new BusinessException("error.tenant_order_not_found", 404, orderId)))
+            .flatMap(order -> {
+                if (order.getStatus() == TenantOrderStatus.paid) {
+                    return Mono.<Void>empty();
+                }
+                if (order.getStatus() != TenantOrderStatus.pending) {
+                    return Mono.<Void>error(new BusinessException("error.tenant_order_not_pending", 400, orderId));
+                }
+                return extendSubscription(order)
+                    .flatMap(expireAfter -> createUpdate()
+                        .set(TenantOrderEntity::getStatus, TenantOrderStatus.paid)
+                        .set(TenantOrderEntity::getPayChannel, payChannel)
+                        .set(TenantOrderEntity::getPayTime, paidAt)
+                        .set(TenantOrderEntity::getExpireTimeAfter, expireAfter)
+                        .where(TenantOrderEntity::getId, orderId)
+                        .and(TenantOrderEntity::getStatus, TenantOrderStatus.pending)
+                        .execute())
+                    .flatMap(updated -> updated == 0
+                        ? Mono.<Void>error(new BusinessException("error.tenant_order_not_pending", 409, orderId))
+                        : Mono.<Void>empty());
+            });
+    }
+
+    /**
+     * 顺延订阅到期时间. 同一租户可能有多笔订单同时到账, 用"到期时间没变才写入"的乐观更新,
+     * 冲突时重读重算, 避免后到的一笔覆盖先到的一笔.
+     */
+    private Mono<Long> extendSubscription(TenantOrderEntity order) {
+        int months = order.getMonths() == null ? 0 : order.getMonths();
+        return findTenant(order.getTenantId())
+            .flatMap(tenant -> {
+                Long current = tenant.getSubscribeExpireTime();
+                long next = computeExpireAfter(current, months, System.currentTimeMillis());
+                ReactiveUpdate<TenantEntity> update = tenantService
+                    .createUpdate()
+                    .set(TenantEntity::getPlanId, order.getPlanId())
+                    .set(TenantEntity::getSubscribeExpireTime, next);
+                Mono<Integer> written = current == null
+                    ? update.where(TenantEntity::getId, tenant.getId()).isNull(TenantEntity::getSubscribeExpireTime).execute()
+                    : update.where(TenantEntity::getId, tenant.getId()).and(TenantEntity::getSubscribeExpireTime, current).execute();
+                return written.flatMap(count -> count == 0
+                    ? Mono.<Long>error(new ExpireChangedConcurrently())
+                    : Mono.just(next));
+            })
+            .retryWhen(Retry.max(EXPIRE_UPDATE_RETRIES).filter(ExpireChangedConcurrently.class::isInstance));
+    }
+
+    /**
+     * 支付单关闭时取消对应的待支付订单. 订单不存在或已不是待支付(已到账)属于正常情况, 不处理.
+     */
+    public Mono<Void> cancelPending(String orderId, String reason) {
+        return findById(orderId)
+            .filter(order -> order.getStatus() == TenantOrderStatus.pending)
+            .flatMap(order -> createUpdate()
+                .set(TenantOrderEntity::getStatus, TenantOrderStatus.cancelled)
+                .set(TenantOrderEntity::getRemark, appendRemark(order.getRemark(), reason))
+                .where(TenantOrderEntity::getId, orderId)
+                .and(TenantOrderEntity::getStatus, TenantOrderStatus.pending)
+                .execute())
+            .then();
+    }
+
+    /** 乐观更新冲突, 只用于触发重试, 不需要堆栈 */
+    static final class ExpireChangedConcurrently extends RuntimeException {
+        ExpireChangedConcurrently() {
+            super("subscribe expire time changed concurrently", null, false, false);
+        }
+    }
+
     static String appendRemark(String origin, String append) {
         return origin == null || origin.isBlank() ? append : origin + " | " + append;
     }
@@ -190,7 +314,7 @@ public class TenantOrderService extends GenericReactiveCrudService<TenantOrderEn
     /**
      * 到期时间顺延: 未到期从原到期时间起算, 已到期/未订阅从当前时间起算, 按日历月累加
      */
-    static long computeExpireAfter(Long currentExpire, int months, long now) {
+    public static long computeExpireAfter(Long currentExpire, int months, long now) {
         long base = currentExpire != null && currentExpire > now ? currentExpire : now;
         return ZonedDateTime
             .ofInstant(Instant.ofEpochMilli(base), ZoneId.systemDefault())

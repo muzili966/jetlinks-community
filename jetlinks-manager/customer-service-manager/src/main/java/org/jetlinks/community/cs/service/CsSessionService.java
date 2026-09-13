@@ -17,6 +17,9 @@ import org.jetlinks.community.cs.chat.CsChatEventPublisher;
 import org.jetlinks.community.cs.chat.CsSessionEvent;
 import org.jetlinks.community.cs.chat.CsSessionStateMachine;
 import org.jetlinks.community.cs.chat.CsSupportIdentity;
+import org.jetlinks.community.cs.card.CsCardDraft;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import org.jetlinks.community.cs.chat.CsSessionView;
 import org.jetlinks.community.cs.entity.CsAgentEntity;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
@@ -46,6 +49,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * 在线会话: 发起与自动分配、收发消息、接入 / 转接 / 结束、转线索.
@@ -367,6 +371,59 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
             .flatMap(session -> sendAttachment(session, CsChatSender.agent, file));
     }
 
+    /**
+     * 坐席发卡片. 卡片内容由调用方按会话现场生成(续费卡片会同时建订单和支付单),
+     * 与消息写入同一事务: 消息没发出去, 生成的订单也一起回滚.
+     */
+    @Transactional
+    public Mono<CsChatMessageEntity> agentCard(String sessionId, Function<CsSessionEntity, Mono<CsCardDraft>> cardBuilder) {
+        return findHandledByCurrent(sessionId)
+            .flatMap(session -> {
+                if (!CsSessionStateMachine.canChat(session.getState())) {
+                    return Mono.error(new BusinessException("error.cs_session_already_closed", 400));
+                }
+                return cardBuilder
+                    .apply(session)
+                    .flatMap(draft -> deliver(session, buildCardMessage(session, draft, System.currentTimeMillis())));
+            });
+    }
+
+    static CsChatMessageEntity buildCardMessage(CsSessionEntity session, CsCardDraft draft, long now) {
+        CsChatMessageEntity message = buildMessage(session, CsChatSender.agent, JSON.toJSONString(draft.getCard()), now);
+        message.setType(CsChatMessageType.card);
+        message.setRefType(draft.getRefType());
+        message.setRefId(draft.getRefId());
+        message.setRefStatus(draft.getRefStatus());
+        return message;
+    }
+
+    /**
+     * 卡片引用的对象状态变了(如支付单已支付): 回写所有引用它的卡片, 并推给这些卡片所在的会话.
+     * 没有卡片引用它时什么都不做.
+     */
+    public Mono<Void> syncCardStatus(String refType, String refId, String status) {
+        return messageRepository
+            .createUpdate()
+            .set(CsChatMessageEntity::getRefStatus, status)
+            .where(CsChatMessageEntity::getRefType, refType)
+            .and(CsChatMessageEntity::getRefId, refId)
+            .execute()
+            .filter(updated -> updated > 0)
+            .flatMapMany(ignore -> messageRepository
+                .createQuery()
+                .where(CsChatMessageEntity::getRefType, refType)
+                .and(CsChatMessageEntity::getRefId, refId)
+                .fetch())
+            .concatMap(message -> findById(message.getSessionId())
+                .flatMap(session -> publisher.publish(cardEvent(session, message), session.getAgentId())))
+            .then();
+    }
+
+    static CsSessionEvent cardEvent(CsSessionEntity session, CsChatMessageEntity message) {
+        return new CsSessionEvent(CsSessionEvent.TYPE_CARD, session.getId(), CsSessionView.of(session), message,
+                                  System.currentTimeMillis());
+    }
+
     @Transactional
     public Mono<Void> agentRead(String sessionId) {
         return findHandledByCurrent(sessionId)
@@ -668,7 +725,24 @@ public class CsSessionService extends GenericReactiveCrudService<CsSessionEntity
 
     static String summaryOf(CsChatMessageEntity message) {
         CsChatMessageType type = message.typeOrText();
+        if (type == CsChatMessageType.card) {
+            return cardSummary(message.getContent());
+        }
         return type.isAttachment() ? CsAttachmentPolicy.summaryOf(type, message.getFileName()) : summarize(message.getContent());
+    }
+
+    static final String CARD_SUMMARY_PREFIX = "[卡片]";
+
+    /** 会话列表摘要只取卡片标题; 内容损坏时退回类型名, 不影响消息本身落库 */
+    static String cardSummary(String content) {
+        String title = null;
+        try {
+            JSONObject card = content == null ? null : JSON.parseObject(content);
+            title = card == null ? null : card.getString("title");
+        } catch (RuntimeException e) {
+            log.debug("card content is not valid json, fallback to type summary", e);
+        }
+        return title == null || title.isBlank() ? CARD_SUMMARY_PREFIX : summarize(CARD_SUMMARY_PREFIX + " " + title);
     }
 
     static String summarize(String content) {

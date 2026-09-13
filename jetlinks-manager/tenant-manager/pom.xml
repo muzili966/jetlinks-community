@@ -109,6 +109,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 续费走在线支付: 租户订阅作为 tenant-subscription 业务接入支付底座 -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>pay-manager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

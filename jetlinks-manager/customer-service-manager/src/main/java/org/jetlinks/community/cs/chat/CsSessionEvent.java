@@ -28,6 +28,8 @@ public class CsSessionEvent {
     public static final String TYPE_TRANSFERRED = "transferred";
     public static final String TYPE_CLOSED = "closed";
     public static final String TYPE_CONTACT = "contact";
+    /** 卡片状态变化(如续费卡片已支付), message 为更新后的卡片消息 */
+    public static final String TYPE_CARD = "card";
 
     private String type;
     private String sessionId;

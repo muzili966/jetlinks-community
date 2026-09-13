@@ -5,6 +5,13 @@ import org.hswebframework.web.system.authorization.api.entity.UserEntity;
 import org.hswebframework.web.system.authorization.defaults.service.DefaultDimensionUserService;
 import org.jetlinks.community.auth.entity.RoleEntity;
 import org.jetlinks.community.cs.CsProperties;
+import org.jetlinks.community.cs.card.CsCardProvider;
+import org.jetlinks.community.cs.card.CsCardRegistry;
+import org.jetlinks.community.cs.card.CsCardService;
+import org.jetlinks.community.cs.card.CsPayCardListener;
+import org.jetlinks.community.cs.card.LinkCardProvider;
+import org.jetlinks.community.cs.card.RenewalCardProvider;
+import org.jetlinks.community.tenant.service.TenantRenewalService;
 import org.jetlinks.community.cs.chat.CsChatEventPublisher;
 import org.jetlinks.community.cs.chat.CsVisitorEventStream;
 import org.jetlinks.community.cs.chat.CsMySessionSubscriptionProvider;
@@ -136,6 +143,36 @@ public class CsManagerConfiguration {
     @Bean
     public CsMySessionSubscriptionProvider csMySessionSubscriptionProvider(EventBus eventBus, CsSessionService sessionService) {
         return new CsMySessionSubscriptionProvider(eventBus, sessionService);
+    }
+
+    // ---------- 卡片消息 ----------
+
+    @Bean
+    public CsCardRegistry csCardRegistry(ObjectProvider<CsCardProvider> providers) {
+        return new CsCardRegistry(providers);
+    }
+
+    @Bean
+    public LinkCardProvider linkCardProvider(CsProperties properties) {
+        return new LinkCardProvider(properties);
+    }
+
+    /**
+     * 租户模块关闭时 TenantRenewalService 不存在, 续费卡片自动对所有会话不可用
+     */
+    @Bean
+    public RenewalCardProvider renewalCardProvider(ObjectProvider<TenantRenewalService> renewalService) {
+        return new RenewalCardProvider(renewalService);
+    }
+
+    @Bean
+    public CsCardService csCardService(CsCardRegistry registry, CsSessionService sessionService) {
+        return new CsCardService(registry, sessionService);
+    }
+
+    @Bean
+    public CsPayCardListener csPayCardListener(CsSessionService sessionService) {
+        return new CsPayCardListener(sessionService);
     }
 
     @Bean

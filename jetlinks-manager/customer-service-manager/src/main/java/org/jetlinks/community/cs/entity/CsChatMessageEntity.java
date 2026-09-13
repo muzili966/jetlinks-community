@@ -20,7 +20,8 @@ import javax.persistence.Table;
 import java.sql.JDBCType;
 
 /**
- * 会话消息, 只增不改. 文本消息 content 是正文; 图片 / 视频 / 文件消息 content 是文件访问地址.
+ * 会话消息. 内容只增不改; 唯一会变的是卡片引用对象的状态(ref_status), 例如续费卡片的支付单从待支付变成已支付.
+ * 文本消息 content 是正文; 图片 / 视频 / 文件消息 content 是文件访问地址; 卡片消息 content 是卡片 JSON.
  *
  * @author customer-service-manager
  * @since 2.11
@@ -28,7 +29,8 @@ import java.sql.JDBCType;
 @Getter
 @Setter
 @Table(name = "cs_chat_message", indexes = {
-    @Index(name = "idx_cs_chat_message_session", columnList = "session_id,create_time")
+    @Index(name = "idx_cs_chat_message_session", columnList = "session_id,create_time"),
+    @Index(name = "idx_cs_chat_message_ref", columnList = "ref_type,ref_id")
 })
 @Comment("客服会话消息表")
 @EnableEntityEvent
@@ -75,6 +77,18 @@ public class CsChatMessageEntity extends GenericEntity<String> {
     @Column(name = "file_size", updatable = false)
     @Schema(description = "附件大小(字节)")
     private Long fileSize;
+
+    @Column(name = "ref_type", length = 32, updatable = false)
+    @Schema(description = "卡片引用的对象类型, 如 pay-order")
+    private String refType;
+
+    @Column(name = "ref_id", length = 64, updatable = false)
+    @Schema(description = "卡片引用的对象ID")
+    private String refId;
+
+    @Column(name = "ref_status", length = 32)
+    @Schema(description = "卡片引用对象的当前状态, 如 pending / paid / closed; 由事件回写")
+    private String refStatus;
 
     @Column(name = "create_time", updatable = false)
     @DefaultValue(generator = Generators.CURRENT_TIME)

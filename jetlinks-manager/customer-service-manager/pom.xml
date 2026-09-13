@@ -81,6 +81,13 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 续费卡片: 监听支付单事件回写卡片状态 -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>pay-manager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

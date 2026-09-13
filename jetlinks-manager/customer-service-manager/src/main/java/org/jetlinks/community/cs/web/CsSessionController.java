@@ -17,9 +17,12 @@ import org.jetlinks.community.cs.entity.CsAgentEntity;
 import org.jetlinks.community.cs.entity.CsChatMessageEntity;
 import org.jetlinks.community.cs.entity.CsLeadEntity;
 import org.jetlinks.community.cs.entity.CsSessionEntity;
+import org.jetlinks.community.cs.card.CsCardKindView;
+import org.jetlinks.community.cs.card.CsCardService;
 import org.jetlinks.community.cs.service.CsAgentService;
 import org.jetlinks.community.cs.service.CsSessionService;
 import org.jetlinks.community.cs.service.request.CsAgentStatusRequest;
+import org.jetlinks.community.cs.service.request.CsCardSendRequest;
 import org.jetlinks.community.cs.service.request.CsChatMessageRequest;
 import org.jetlinks.community.cs.service.request.CsSessionCloseRequest;
 import org.jetlinks.community.cs.service.request.CsSessionLeadRequest;
@@ -56,6 +59,7 @@ public class CsSessionController implements ReactiveServiceQueryController<CsSes
     private final CsProperties properties;
     private final CsSessionService service;
     private final CsAgentService agentService;
+    private final CsCardService cardService;
 
     @Override
     public ReactiveCrudService<CsSessionEntity, String> getService() {
@@ -127,6 +131,20 @@ public class CsSessionController implements ReactiveServiceQueryController<CsSes
     @Operation(summary = "坐席发送图片 / 视频 / 文件(multipart 字段 file)")
     public Mono<CsChatMessageEntity> attachment(@PathVariable String id, @RequestPart("file") Mono<FilePart> file) {
         return file.flatMap(part -> service.agentAttachment(id, part));
+    }
+
+    @GetMapping("/{id}/card-kinds")
+    @QueryAction
+    @Operation(summary = "这个会话可以发送的卡片种类(续费卡片只对租户会话开放)")
+    public Flux<CsCardKindView> cardKinds(@PathVariable String id) {
+        return cardService.kinds(id);
+    }
+
+    @PostMapping("/{id}/card")
+    @SaveAction
+    @Operation(summary = "发送卡片; 内容由后端按种类生成, 金额与支付链接不接受前端传入")
+    public Mono<CsChatMessageEntity> sendCard(@PathVariable String id, @RequestBody @Valid Mono<CsCardSendRequest> body) {
+        return body.flatMap(request -> cardService.send(id, request));
     }
 
     @PostMapping("/{id}/_read")

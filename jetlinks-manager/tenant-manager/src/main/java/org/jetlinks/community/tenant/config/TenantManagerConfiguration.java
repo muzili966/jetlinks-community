@@ -1,5 +1,8 @@
 package org.jetlinks.community.tenant.config;
 
+import org.jetlinks.community.pay.service.PayOrderService;
+import org.jetlinks.community.tenant.pay.TenantSubscriptionPayHandler;
+import org.jetlinks.community.tenant.service.TenantRenewalService;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.web.system.authorization.defaults.service.DefaultDimensionUserService;
 import org.jetlinks.community.device.entity.DeviceInstanceEntity;
@@ -212,6 +215,26 @@ public class TenantManagerConfiguration {
     @Bean
     public TenantInvoiceService tenantInvoiceService(TenantOrderService orderService) {
         return new TenantInvoiceService(orderService);
+    }
+
+    /**
+     * 续费生成待支付订单与支付单; 支付模块可整体关闭, 按需取用
+     */
+    @Bean
+    public TenantRenewalService tenantRenewalService(TenantService tenantService,
+                                                     TenantOrderService orderService,
+                                                     ObjectProvider<PayOrderService> payOrderService) {
+        return new TenantRenewalService(tenantService, orderService, payOrderService);
+    }
+
+    /**
+     * 租户订阅作为 tenant-subscription 业务接入支付底座
+     */
+    @Bean
+    public TenantSubscriptionPayHandler tenantSubscriptionPayHandler(TenantProperties properties,
+                                                                     TenantOrderService orderService,
+                                                                     TenantService tenantService) {
+        return new TenantSubscriptionPayHandler(properties, orderService, tenantService);
     }
 
     @Bean

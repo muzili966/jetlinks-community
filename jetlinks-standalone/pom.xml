@@ -288,6 +288,12 @@
 
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>pay-manager</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>customer-service-manager</artifactId>
             <version>${project.version}</version>
         </dependency>

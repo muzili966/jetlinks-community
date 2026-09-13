@@ -121,6 +121,12 @@ public class CsProperties {
          * 官网聊天窗展示的常见问题条数
          */
         private int faqLimit = 8;
+
+        /**
+         * 链接卡片允许的域名(含子域名); 为空时允许任意 http/https 链接.
+         * 生产建议配置: 坐席账号一旦被盗, 可以借客服身份给客户发钓鱼链接.
+         */
+        private Set<String> cardLinkHosts = new LinkedHashSet<>();
     }
 
     @Getter
