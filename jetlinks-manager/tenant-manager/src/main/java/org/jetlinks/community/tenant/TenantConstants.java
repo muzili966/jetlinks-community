@@ -41,6 +41,17 @@ public interface TenantConstants {
     String IMPERSONATE_CONTEXT_KEY = "tenant-impersonate";
 
     /**
+     * 携带代理租户的查询参数，供不能自定义请求头的通道使用（WebSocket 握手、EventSource、导出下载链接），
+     * 命名与 token 的 {@code :X_Access_Token} 保持一致
+     */
+    String IMPERSONATE_QUERY_PARAM = ":X_Tenant_Id";
+
+    /**
+     * 代理态降权身份上的属性，值为发起代理的平台管理员用户ID
+     */
+    String IMPERSONATOR_ATTRIBUTE = "tenant-impersonator";
+
+    /**
      * 设备/产品配置中携带租户ID的key,
      * 与 {@link org.jetlinks.community.PropertyConstants#creatorId} 同机制
      */

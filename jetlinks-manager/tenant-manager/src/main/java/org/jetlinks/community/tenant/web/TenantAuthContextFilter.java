@@ -1,9 +1,12 @@
 package org.jetlinks.community.tenant.web;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.hswebframework.web.authorization.Authentication;
 import org.hswebframework.web.authorization.ReactiveAuthenticationHolder;
 import org.hswebframework.web.authorization.token.UserTokenManager;
+import org.jetlinks.community.tenant.context.TenantImpersonation;
+import org.jetlinks.community.tenant.context.TenantImpersonationAuthenticator;
 import org.springframework.core.Ordered;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -32,10 +35,16 @@ import java.util.Optional;
  *     <li>认证装配链路——尚未经过本过滤器，读不到认证，不注入（正是所需）</li>
  *     <li>设备上行/定时任务等系统链路——无认证，不注入（与改造前一致）</li>
  * </ul>
+ * <p>
+ * 平台管理员代理租户时，放入的是降权后的租户管理员身份（见 {@link TenantImpersonationAuthenticator}）。
+ * hsweb 的 {@code ReactiveAuthenticationHolder.get()} 优先返回上下文里的认证，
+ * 所以接口鉴权、菜单、{@code /authorize/me} 与隔离监听器都按这份身份执行。
+ * 代理审计也记在这里：只有这一层同时知道操作人与目标租户。
  *
  * @author tenant-manager
  * @since 2.11
  */
+@Slf4j
 @RequiredArgsConstructor
 public class TenantAuthContextFilter implements WebFilter, Ordered {
 
@@ -43,6 +52,8 @@ public class TenantAuthContextFilter implements WebFilter, Ordered {
     private static final String TOKEN_QUERY = ":X_Access_Token";
 
     private final UserTokenManager userTokenManager;
+
+    private final TenantImpersonationAuthenticator impersonationAuthenticator;
 
     @Override
     @Nonnull
@@ -59,6 +70,8 @@ public class TenantAuthContextFilter implements WebFilter, Ordered {
             .filter(t -> t.isNormal() && t.getUserId() != null)
             // 这一步可能触发认证装配；装配自身的查询看不到下面写入的上下文，因此不会被注入
             .flatMap(t -> ReactiveAuthenticationHolder.get(t.getUserId()))
+            // 代理身份同理要在写入上下文之前算好：它要查角色与菜单授权
+            .flatMap(auth -> effectiveAuthentication(exchange, auth))
             // 先把「有没有认证」物化成值再分支。
             // 不能写成 .flatMap(auth -> chain.filter(..)).switchIfEmpty(chain.filter(..))：
             // chain.filter 返回 Mono<Void>，正常跑完也是「空」，会把 switchIfEmpty 一并触发，
@@ -72,6 +85,29 @@ public class TenantAuthContextFilter implements WebFilter, Ordered {
                     .contextWrite(ctx -> ctx.put(Authentication.class, a)))
                 // 认证解析不了(游客/登录接口/token 失效)时不阻断，交给后续认证过滤器处理
                 .orElseGet(() -> chain.filter(exchange)));
+    }
+
+    /**
+     * 平台管理员代理租户时换成降权身份，其他情况原样返回
+     */
+    private Mono<Authentication> effectiveAuthentication(ServerWebExchange exchange, Authentication auth) {
+        return TenantImpersonation
+            .fromRequest(exchange.getRequest())
+            .map(tenantId -> impersonationAuthenticator
+                .resolve(auth, tenantId)
+                .doOnNext(effective -> auditImpersonation(exchange, effective, tenantId)))
+            .orElseGet(() -> Mono.just(auth));
+    }
+
+    private void auditImpersonation(ServerWebExchange exchange, Authentication effective, String tenantId) {
+        if (!TenantImpersonation.isImpersonated(effective)) {
+            return;
+        }
+        log.info("tenant impersonation: operator=[{}] tenant=[{}] method=[{}] path=[{}]",
+                 effective.getUser().getId(),
+                 tenantId,
+                 exchange.getRequest().getMethod(),
+                 exchange.getRequest().getPath().value());
     }
 
     @Override

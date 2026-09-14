@@ -40,6 +40,15 @@ import org.jetlinks.community.tenant.service.TenantPlanService;
 import org.jetlinks.community.tenant.service.TenantQuotaResolver;
 import org.jetlinks.community.tenant.service.TenantService;
 import org.jetlinks.community.tenant.web.TenantAuthContextFilter;
+import org.hswebframework.web.authorization.ReactiveAuthenticationManager;
+import org.jetlinks.community.auth.initialize.MenuAuthenticationInitializeService;
+import org.jetlinks.community.gateway.external.MessagingManager;
+import org.jetlinks.community.gateway.external.socket.WebSocketMessagingHandler;
+import org.jetlinks.community.tenant.context.TenantImpersonationAuthenticator;
+import org.jetlinks.community.tenant.messaging.ImpersonatingAuthenticationManager;
+import org.jetlinks.community.tenant.messaging.TenantMessagingHandlerMappingPostProcessor;
+import org.jetlinks.community.tenant.role.TenantMenuProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.jetlinks.community.tenant.web.TenantController;
 import org.jetlinks.community.tenant.web.TenantImpersonationFilter;
 import org.jetlinks.community.tenant.service.TenantBillingService;
@@ -176,8 +185,48 @@ public class TenantManagerConfiguration {
      * 否则会在认证装配途中反向触发装配（详见该类注释）。
      */
     @Bean
-    public TenantAuthContextFilter tenantAuthContextFilter(UserTokenManager userTokenManager) {
-        return new TenantAuthContextFilter(userTokenManager);
+    public TenantAuthContextFilter tenantAuthContextFilter(UserTokenManager userTokenManager,
+                                                           TenantImpersonationAuthenticator impersonationAuthenticator) {
+        return new TenantAuthContextFilter(userTokenManager, impersonationAuthenticator);
+    }
+
+    @Bean
+    public TenantImpersonationAuthenticator tenantImpersonationAuthenticator(TenantProperties properties,
+                                                                             TenantService tenantService,
+                                                                             ReactiveRepository<RoleEntity, String> roleRepository,
+                                                                             MenuAuthenticationInitializeService menuPermissionService) {
+        return new TenantImpersonationAuthenticator(properties,
+                                                    tenantService.getRepository(),
+                                                    roleRepository,
+                                                    menuPermissionService);
+    }
+
+    /**
+     * 代理态下关闭 admin 的全量菜单分支。@Primary 让 DefaultMenuService 注入这一份；
+     * 上游经 @EnableConfigurationProperties 注册的那份仍在容器里，只是不再被按类型注入。
+     */
+    @Bean
+    @Primary
+    @ConfigurationProperties(prefix = "menu")
+    public TenantMenuProperties tenantMenuProperties() {
+        return new TenantMenuProperties();
+    }
+
+    /**
+     * WebSocket 订阅同样按代理租户降权。static + ObjectProvider：避免 BeanPostProcessor 过早拉起业务 bean
+     */
+    @Bean
+    public static TenantMessagingHandlerMappingPostProcessor tenantMessagingHandlerMappingPostProcessor(
+        ObjectProvider<MessagingManager> messagingManager,
+        ObjectProvider<UserTokenManager> userTokenManager,
+        ObjectProvider<ReactiveAuthenticationManager> authenticationManager,
+        ObjectProvider<TenantImpersonationAuthenticator> impersonationAuthenticator) {
+        return new TenantMessagingHandlerMappingPostProcessor(tenantId -> new WebSocketMessagingHandler(
+            messagingManager.getObject(),
+            userTokenManager.getObject(),
+            new ImpersonatingAuthenticationManager(authenticationManager.getObject(),
+                                                   impersonationAuthenticator.getObject(),
+                                                   tenantId)));
     }
 
     @Bean

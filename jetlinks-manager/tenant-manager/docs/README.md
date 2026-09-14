@@ -28,7 +28,11 @@ tenant:
 | `config.TenantEntityMappingCustomizer` | 25 张隔离表的实体替换为 `ext.*` 租户子类(AutoDDL 走 `getInstanceType` 解析子类) |
 | `dimension.TenantDimensionProvider` | 登录时把租户注入 Authentication 维度 |
 | `context.TenantContext` | 三态解析: 租户用户 / 平台管理员直通 / 无租户fail-closed |
-| `web.TenantImpersonationFilter` | D5: `X-Tenant-Id` 头显式代理 + 审计日志 |
+| `web.TenantImpersonationFilter` | D5: 代理租户(`X-Tenant-Id` 头或 `:X_Tenant_Id` 查询参数)写入 Reactor Context |
+| `web.TenantAuthContextFilter` | 把认证写入 Context; 平台管理员代理时写入降权身份, 并记录操作人审计日志 |
+| `context.TenantImpersonationAuthenticator` | 代理态降权: 用户仍是管理员, 维度=租户+`tenant-admin-{tid}` 角色, 权限按该角色菜单授权现算 |
+| `role.TenantMenuProperties` | @Primary 覆盖 `MenuProperties`, 代理态关闭 admin 全量菜单分支 |
+| `messaging.TenantMessagingHandlerMappingPostProcessor` | 替换 `/messaging/**` 处理器, WebSocket 握手带代理参数时订阅同样降权 |
 | `metric.TenantThingsDataCustomizer` | 时序表名前缀 `t{tenantId}_...`, 缓存未命中落 `tunknown_` 隔离区 |
 | `messaging.TenantMessagingManager` | WebSocket 订阅鉴权装饰器(@Primary), topic 白名单 + 产品归属校验 |
 | `quota.TenantDeviceQuotaListener` | 设备数量配额(`s_tenant.quota.maxDeviceCount`) |

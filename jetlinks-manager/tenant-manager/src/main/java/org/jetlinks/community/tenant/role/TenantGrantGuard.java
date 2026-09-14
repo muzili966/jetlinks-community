@@ -109,6 +109,19 @@ public class TenantGrantGuard implements WebFilter, Ordered {
     }
 
     /**
+     * 取本次请求的有效身份。
+     * <p>
+     * 优先读 {@link org.jetlinks.community.tenant.web.TenantAuthContextFilter}(+100) 写入上下文的认证:
+     * 代理态下那是降权后的租户管理员, 平台管理员在租户视图里因此同样受租户规则约束
+     * (平台专属接口拒绝, 只能给代理租户的角色配菜单)。取不到时再自行从 token 解析。
+     */
+    private Mono<Authentication> resolveAuth(ServerWebExchange exchange) {
+        return Mono
+            .deferContextual(ctx -> Mono.justOrEmpty(ctx.<Authentication>getOrEmpty(Authentication.class)))
+            .switchIfEmpty(Mono.defer(() -> resolveAuthByToken(exchange)));
+    }
+
+    /**
      * 自行从 token 解析认证。
      * <p>
      * 不能用 {@code Authentication.currentReactive()}: hsweb 的 token 上下文由
@@ -116,7 +129,7 @@ public class TenantGrantGuard implements WebFilter, Ordered {
      * currentReactive 永远为空——真机现象: 守卫全程空转, 平台接口全靠资源权限兜底,
      * 租户拿到 menu 权限后即可读写任意角色的菜单授权。
      */
-    private Mono<Authentication> resolveAuth(ServerWebExchange exchange) {
+    private Mono<Authentication> resolveAuthByToken(ServerWebExchange exchange) {
         String token = exchange.getRequest().getHeaders().getFirst("X-Access-Token");
         if (token == null) {
             token = exchange.getRequest().getQueryParams().getFirst(":X_Access_Token");
